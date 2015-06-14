@@ -1,6 +1,15 @@
 %%%---------------------------------------------------------------------------
 %%% @doc
 %%%   Functions to use in test cases.
+%%%
+%%%   Test passes if it returns or throws (`throw()'): `ok', `{ok, Value}', or
+%%%   `true'.
+%%%
+%%%   Test fails if it returns or throws `error', `{error, Reason}', `false',
+%%%   or calls `exit(...)' or `erlang:error(...)' (or simply dies).
+%%%
+%%%   Any other returned value is also considered a failure, but a dubious
+%%%   one. Stick to saying explicitly that the test failed.
 %%% @end
 %%%---------------------------------------------------------------------------
 
@@ -35,11 +44,15 @@
 %%% public interface
 %%%---------------------------------------------------------------------------
 
+%% @doc Check if `Value' is any of the recognized truth values.
+
 -spec ok(value(), description()) ->
   'TODO'.
 
 ok(_Value, _Description) ->
   'TODO'.
+
+%% @doc Check if `Value' is the same as `Expected'.
 
 -spec is(value(), value(), description()) ->
   'TODO'.
@@ -47,23 +60,31 @@ ok(_Value, _Description) ->
 is(_Value, _Expected, _Description) ->
   'TODO'.
 
+%% @doc Check if `Value' is different than `Expected'.
+
 -spec isnt(value(), value(), description()) ->
   'TODO'.
 
 isnt(_Value, _Expected, _Description) ->
   'TODO'.
 
+%% @doc Check if `Value' is equal (`==') to `Expected'.
+
 -spec eq(value(), value(), description()) ->
   'TODO'.
 
 eq(Value, Expected, Description) ->
-  cmp(Value, '=:=', Expected, Description).
+  cmp(Value, '==', Expected, Description).
+
+%% @doc Check if `Value' is not equal (`/=') to `Expected'.
 
 -spec ne(value(), value(), description()) ->
   'TODO'.
 
 ne(Value, Expected, Description) ->
-  cmp(Value, '=/=', Expected, Description).
+  cmp(Value, '/=', Expected, Description).
+
+%% @doc Compare `Value' and `Expected' using comparison operator.
 
 -spec cmp(value(), cmp(), value(), description()) ->
   'TODO'.
@@ -71,17 +92,26 @@ ne(Value, Expected, Description) ->
 cmp(_Value, _Cmp, _Expected, _Description) ->
   'TODO'.
 
+%% @doc Check if `Value' matches a regexp.
+
 -spec like(value(), regexp(), description()) ->
   'TODO'.
 
 like(_Value, _Expected, _Description) ->
   'TODO'.
 
+%% @doc Check if `Value' not matches a regexp.
+
 -spec unlike(value(), regexp(), description()) ->
   'TODO'.
 
 unlike(_Value, _Expected, _Description) ->
   'TODO'.
+
+%% @doc Check if `Value' pattern-matches.
+%%   Pattern is specified as a fun that has clauses defined only for what
+%%   should match, i.e., calling the fun should fail with `function_clause'
+%%   error. Return value of the fun is ignored.
 
 -spec matches(value(), match_fun(), description()) ->
   'TODO'.
@@ -119,6 +149,8 @@ plan(_TestCount) ->
   'TODO'.
 
 %% @doc Check if all the current sub-tests were OK.
+%%   Function intended to be called at the end of a sequence of sub-tests, to
+%%   indicate that the test sequence passed or failed.
 
 -spec all_ok() ->
   'TODO'.
