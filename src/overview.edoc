@@ -1,0 +1,18 @@
+@author Stanislaw Klekot <dozzie@jarowit.net>
+@title escript TAP producer
+@version 0.0.0
+@doc
+
+TAP producer for Erlang, running from command line.
+
+Goal of estap is to allow to write tests for Erlang application in similar
+manner as it is established in Perl world: `*.t' files in a directory, the
+files being executable and producing
+<a href="http://testanything.org/">TAP</a> output, thus being appropriate for
+TAP consumers like `prove' command.
+
+== Usage ==
+
+<b>TODO</b>
+
+<!-- vim:set ft=edoc: -->
