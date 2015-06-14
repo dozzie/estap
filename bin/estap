@@ -8,7 +8,9 @@ main(["--help"]) ->
   io:fwrite("Usage: ~s filename~n", [escript:script_name()]);
 
 main([File]) ->
-  'TODO'.
+  {ok, {Module, Forms}} = estap_file:read_file(File, []),
+  {ok, {Plan, Tests}} = estap_file:load_code(Forms),
+  io:fwrite("plan: ~p~ntests: ~p~n", [Plan, Tests]).
 
 %%----------------------------------------------------------------------------
 %% vim:ft=erlang
