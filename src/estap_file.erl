@@ -91,7 +91,7 @@ read_file(File, IncludePath, TempDir) ->
     {ok, DirName} ->
       case copy_source(File, DirName) of
         {ok, ModuleFile} ->
-          Result = parse_file(ModuleFile, IncludePath),
+          Result = parse_file(ModuleFile, File, IncludePath),
           ok = file:delete(ModuleFile),
           ok = file:del_dir(DirName),
           Result;
@@ -111,19 +111,14 @@ read_file(File, IncludePath, TempDir) ->
 copy_source(Source, TargetDir) ->
   Target = filename:join(TargetDir, filename:basename(Source)),
   case file:read_file(Source) of
-    {ok, <<"#!", _/binary>> = Content} ->
-      % the file starts with shee-bang; skip this line
-      case binary:split(Content, <<"\n">>) of
-        [_SheeBang] ->
-          {error, no_source};
-        [_SheeBang, SourceCode] ->
-          case file:write_file(Target, SourceCode) of
-            ok -> {ok, Target};
-            {error, Reason} -> {error, Reason}
-          end
-      end;
     {ok, Content} ->
-      case file:write_file(Target, Content) of
+      % adding a comment just before "#!" preserves line numbering, so stack
+      % traces when test case dies are accurate
+      SourceCode = case Content of
+        <<"#!", _/binary>> -> <<"%%% ", Content/binary>>;
+        _ -> Content
+      end,
+      case file:write_file(Target, SourceCode) of
         ok -> {ok, Target};
         {error, Reason} -> {error, Reason}
       end;
@@ -133,21 +128,31 @@ copy_source(Source, TargetDir) ->
 
 %% @doc Parse specified file to ABF forms.
 
--spec parse_file(file:name(), [file:name()]) ->
+-spec parse_file(file:name(), file:name(), [file:name()]) ->
   {ok, {module(), [erl_parse:abstract_form()]}} | {error, term()}.
 
-parse_file(File, IncludePath) ->
+parse_file(File, Source, IncludePath) ->
   Macros = [],
   case epp:parse_file(File, IncludePath, Macros) of
     {ok, Forms} ->
+      % replace name of the file `epp:parse_file()' actually read with the
+      % name of source file, so any possible stack traces mention this source,
+      % not a temporary file
+      NewForms = lists:map(
+        fun
+          ({attribute,N1,file,{_File,N2}}) -> {attribute,N1,file,{Source,N2}};
+          (Form) -> Form
+        end,
+        Forms
+      ),
       case [M || {attribute, _, module, M} <- Forms] of
         % in case of two `-module()' entries let the `compile:forms()' raise
         % an error
         [ModuleName | _] ->
-          {ok, {ModuleName, Forms}};
+          {ok, {ModuleName, NewForms}};
         [] ->
           ModuleName = list_to_atom(filename:rootname(filename:basename(File))),
-          {ok, {ModuleName, [{attribute, 0, module, ModuleName} | Forms]}}
+          {ok, {ModuleName, [{attribute, 0, module, ModuleName} | NewForms]}}
       end;
     {error, Reason} ->
       {error, Reason}
