@@ -8,6 +8,7 @@
 
 %% public interface
 -export([run/2]).
+-export([success_or_failure/1]).
 
 %% private interface
 -export([call/4]).
@@ -94,14 +95,8 @@ test({Mod, Func} = _TestFunSpec) ->
   ok.
 
 call({Pid, Ref} = _ResultTo, Mod, Fun, Args) ->
-  TestResult = try apply(Mod, Fun, Args) of
-    ok          -> {success, ok};
-    {ok, Value} -> {success, {ok, Value}};
-    true        -> {success, true};
-    error           -> {failure, error};
-    {error, Reason} -> {failure, {error, Reason}};
-    false           -> {failure, false};
-    Result          -> {dubious, Result}
+  TestResult = try
+    success_or_failure(apply(Mod, Fun, Args))
   catch
     throw:ok          -> {success, ok};
     throw:{ok, Value} -> {success, {ok, Value}};
@@ -112,6 +107,24 @@ call({Pid, Ref} = _ResultTo, Mod, Fun, Args) ->
   end,
   Pid ! {result, Ref, TestResult},
   ok.
+
+%%----------------------------------------------------------
+
+%% @doc Assess whether the value (returned by some function) is a success or
+%%   failure.
+
+-spec success_or_failure(Value) ->
+    {success, Value}
+  | {failure, Value}
+  | {dubious, Value}.
+
+success_or_failure(ok = Value)      -> {success, Value};
+success_or_failure({ok, _} = Value) -> {success, Value};
+success_or_failure(true = Value)    -> {success, Value};
+success_or_failure(error = Value)      -> {failure, Value};
+success_or_failure({error, _} = Value) -> {failure, Value};
+success_or_failure(false = Value)      -> {failure, Value};
+success_or_failure(Value) -> {dubious, Value}.
 
 %%----------------------------------------------------------
 

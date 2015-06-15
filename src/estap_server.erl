@@ -61,8 +61,9 @@ plan(TestCount) when is_integer(TestCount) ->
 -spec subplan(plan(), pos_integer()) ->
   test_run_id().
 
-subplan(TestCount, Level) when is_integer(TestCount), is_integer(Level) ->
-  {ok, Pid} = start_link(TestCount, Level),
+subplan(Plan, Level)
+when Plan == no_plan orelse is_integer(Plan), is_integer(Level) ->
+  {ok, Pid} = start_link(Plan, Level),
   Pid.
 
 %% @doc Mark the end of tests in this run.
