@@ -15,4 +15,18 @@ TAP consumers like `prove' command.
 
 <b>TODO</b>
 
+== How does it work? ==
+
+<ol>
+  <li>copy the test file, stripping `#!' line</li>
+  <li>compile the file to ABFs</li>
+  <li>extract test data (descriptions, functions, ...)</li>
+  <li>add any missing data (`-module()' declaration, exports for test
+      functions) and remove estap's attributes that otherwise would hamper
+      compilation</li>
+  <li>compile forms to bytecode and load the module</li>
+  <li>start {@link estap_server} for tracking test cases</li>
+  <li>consecutively call each test function in a separate process</li>
+</ol>
+
 <!-- vim:set ft=edoc: -->
