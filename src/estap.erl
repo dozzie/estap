@@ -19,6 +19,7 @@
 -export([ok/2, is/3, isnt/3, eq/3, ne/3, cmp/4, like/3, unlike/3, matches/3]).
 -export([bail_out/1, no_plan/0, plan/1, all_ok/0]).
 -export([diag/1, diag/2, note/1, note/2, explain/1]).
+-export([test_dir/0, test_dir/1]).
 
 -export_type([value/0, cmp/0, regexp/0, match_fun/0]).
 
@@ -216,6 +217,22 @@ all_ok() ->
   {Planned, Total, Failed, _TODO} = estap_server:get_status(TestRun),
   estap_server:done(TestRun), % this ends estap_server, so it goes last
   (Failed == 0) and ((Planned == undefined) or (Planned == Total)).
+
+%%%---------------------------------------------------------------------------
+
+%% @doc Get a directory containing this test script.
+%%
+%% @TODO Implement this function.
+
+test_dir() ->
+  'TODO'.
+
+%% @doc Get a subdirectory of the directory containing this test script.
+%%
+%% @TODO Implement this function.
+
+test_dir(_Subdir) ->
+  'TODO'.
 
 %%%---------------------------------------------------------------------------
 
