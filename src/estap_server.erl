@@ -11,7 +11,7 @@
 %% public interface
 -export([no_plan/0, plan/1, done/1]).
 -export([running/2]).
--export([test_skipped/2, test_todo/2]).
+-export([test_skipped/2, test_todo/3]).
 -export([test_passed/1, test_failed/2, dubious_result/2, test_died/2]).
 
 %% supervision tree API
@@ -117,11 +117,11 @@ test_skipped(TestRunId, Reason) ->
 
 %% @doc Mark the test as "TODO".
 
--spec test_todo(test_run_id(), string()) ->
+-spec test_todo(test_run_id(), term(), string()) ->
   ok.
 
-test_todo(TestRunId, Reason) ->
-  gen_server:call(TestRunId, {todo, Reason}).
+test_todo(TestRunId, Result, Why) ->
+  gen_server:call(TestRunId, {todo, Result, Why}).
 
 %%%---------------------------------------------------------------------------
 %%% supervision tree API
@@ -190,7 +190,6 @@ handle_call({next, Desc} = _Request, _From,
     undefined -> 1;
     {TestNo, _} -> TestNo + 1
   end,
-  %io:fwrite("# running test ~B: ~s~n", [NextTestNo, Desc]),
   NewState = State#state{test = {NextTestNo, Desc}},
   {reply, ok, NewState};
 
@@ -213,14 +212,21 @@ handle_call({result, TestResult} = _Request, _From,
 
 handle_call({skipped, Reason} = _Request, _From,
             State = #state{test = {TestNo, TestDesc}}) ->
-  % TODO: OK or NOK?
-  io:fwrite("ok ~B - ~s # SKIP: ~s~n", [TestNo, TestDesc, Reason]),
+  io:fwrite("ok ~B - ~s # SKIP ~s~n", [TestNo, TestDesc, Reason]),
   {reply, ok, State};
 
-handle_call({todo, Reason} = _Request, _From,
+handle_call({todo, TestResult, Why} = _Request, _From,
             State = #state{test = {TestNo, TestDesc}}) ->
-  % TODO: OK or NOK?
-  io:fwrite("ok ~B - ~s # TODO: ~s~n", [TestNo, TestDesc, Reason]),
+  case TestResult of
+    success ->
+      io:fwrite("ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why]);
+    {failure, _Reason} ->
+      io:fwrite("not ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why]);
+    {dubious, _Value} ->
+      io:fwrite("not ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why]);
+    {died, _Reason} ->
+      io:fwrite("not ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why])
+  end,
   {reply, ok, State};
 
 %% unknown calls
