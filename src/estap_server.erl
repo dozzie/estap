@@ -10,6 +10,7 @@
 
 %% public interface
 -export([no_plan/0, plan/1, subplan/2, done/1]).
+-export([get_status/1]).
 -export([running/2, report_result/2, report_result_todo/3, report_skipped/2]).
 
 %% supervision tree API
@@ -28,10 +29,20 @@
 
 -type plan() :: no_plan | pos_integer().
 
+-record(counters, {
+  tests     = 0,
+  successes = 0,
+  failures  = 0,
+  todo_successes = 0,
+  todo_failures  = 0,
+  skipped   = 0
+}).
+
 -record(state, {
   plan :: plan(),
   level = 0 :: non_neg_integer(),
-  test :: {TestNo :: pos_integer(), Description :: string()}
+  test :: {TestNo :: pos_integer(), Description :: string()},
+  counters = #counters{}
 }).
 
 %%%---------------------------------------------------------------------------
@@ -73,6 +84,16 @@ when Plan == no_plan orelse is_integer(Plan), is_integer(Level) ->
 
 done(TestRunId) ->
   gen_server:call(TestRunId, done).
+
+%% @doc Return summary in form of numbers of tests.
+%%   `TODO' tests are the ones marked as TODO that failed.
+
+-spec get_status(test_run_id()) ->
+  {Planned :: integer() | undefined,
+    Total :: integer(), Failed :: integer(), TODO :: integer()}.
+
+get_status(TestRunId) ->
+  gen_server:call(TestRunId, status).
 
 %% @doc Mark the beginning of new test.
 
@@ -136,8 +157,8 @@ report_skipped(TestRunId, Why) ->
 -spec start(plan(), non_neg_integer()) ->
   {ok, pid()} | {error, term()}.
 
-start(Plan, _Level) ->
-  gen_server:start(?MODULE, [Plan], []).
+start(Plan, Level) ->
+  gen_server:start(?MODULE, [Plan, Level], []).
 
 %% @private
 %% @doc Start the process.
@@ -145,8 +166,8 @@ start(Plan, _Level) ->
 -spec start_link(plan(), non_neg_integer()) ->
   {ok, pid()} | {error, term()}.
 
-start_link(Plan, _Level) ->
-  gen_server:start_link(?MODULE, [Plan], []).
+start_link(Plan, Level) ->
+  gen_server:start_link(?MODULE, [Plan, Level], []).
 
 %%%---------------------------------------------------------------------------
 %%% gen_server callbacks
@@ -158,12 +179,12 @@ start_link(Plan, _Level) ->
 %% @private
 %% @doc Initialize event handler.
 
-init([Plan] = _Args) ->
+init([Plan, Level] = _Args) ->
+  State = #state{plan = Plan, level = Level},
   case Plan of
     no_plan -> skip;
-    C when is_integer(C) -> io:fwrite("1..~B~n", [C])
+    C when is_integer(C) -> print("1..~B", [C], State)
   end,
-  State = #state{plan = Plan},
   {ok, State}.
 
 %% @private
@@ -182,8 +203,10 @@ terminate(_Arg, _State) ->
 handle_call(done = _Request, _From,
             State = #state{plan = Plan, test = {LastTestNo, _}}) ->
   case Plan of
-    no_plan -> io:fwrite("1..~B~n", [LastTestNo]);
-    C when is_integer(C) -> io:fwrite("# ran ~B of ~B tests~n", [LastTestNo, C])
+    no_plan ->
+      print("1..~B", [LastTestNo], State);
+    C when is_integer(C) ->
+      print("# ran ~B of ~B tests", [LastTestNo, C], State)
   end,
   {stop, normal, ok, State};
 
@@ -197,40 +220,53 @@ handle_call({next, Desc} = _Request, _From,
   {reply, ok, NewState};
 
 handle_call({result, TestResult} = _Request, _From,
-            State = #state{test = {TestNo, TestDesc}}) ->
+            State = #state{test = {TestNo, TestDesc}, counters = Counters}) ->
   case TestResult of
     success ->
-      io:fwrite("ok ~B - ~s~n", [TestNo, TestDesc]);
+      print("ok ~B - ~s", [TestNo, TestDesc], State);
     {failure, Reason} ->
-      io:fwrite("not ok ~B - ~s # result: ~s~n",
-                [TestNo, TestDesc, format(Reason)]);
+      print("not ok ~B - ~s # result: ~s",
+            [TestNo, TestDesc, format(Reason)], State);
     {dubious, Value} ->
-      io:fwrite("not ok ~B - ~s # dubious result: ~s~n",
-                [TestNo, TestDesc, format(Value)]);
+      print("not ok ~B - ~s # dubious result: ~s",
+            [TestNo, TestDesc, format(Value)], State);
     {died, Reason} ->
-      io:fwrite("not ok ~B - ~s # died: ~s~n",
-                [TestNo, TestDesc, format(Reason)])
+      print("not ok ~B - ~s # died: ~s",
+            [TestNo, TestDesc, format(Reason)], State)
   end,
-  {reply, ok, State};
+  NewState = State#state{counters = add_result(TestResult, Counters)},
+  {reply, ok, NewState};
 
 handle_call({todo, TestResult, Why} = _Request, _From,
-            State = #state{test = {TestNo, TestDesc}}) ->
+            State = #state{test = {TestNo, TestDesc}, counters = Counters}) ->
   case TestResult of
     success ->
-      io:fwrite("ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why]);
+      print("ok ~B - ~s # TODO ~s", [TestNo, TestDesc, Why], State);
     {failure, _Reason} ->
-      io:fwrite("not ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why]);
+      print("not ok ~B - ~s # TODO ~s", [TestNo, TestDesc, Why], State);
     {dubious, _Value} ->
-      io:fwrite("not ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why]);
+      print("not ok ~B - ~s # TODO ~s", [TestNo, TestDesc, Why], State);
     {died, _Reason} ->
-      io:fwrite("not ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why])
+      print("not ok ~B - ~s # TODO ~s", [TestNo, TestDesc, Why], State)
   end,
-  {reply, ok, State};
+  NewState = State#state{counters = add_todo(TestResult, Counters)},
+  {reply, ok, NewState};
 
 handle_call({skipped, Reason} = _Request, _From,
-            State = #state{test = {TestNo, TestDesc}}) ->
-  io:fwrite("ok ~B - ~s # SKIP ~s~n", [TestNo, TestDesc, Reason]),
-  {reply, ok, State};
+            State = #state{test = {TestNo, TestDesc}, counters = Counters}) ->
+  print("ok ~B - ~s # SKIP ~s", [TestNo, TestDesc, Reason], State),
+  NewState = State#state{counters = add_skipped(Counters)},
+  {reply, ok, NewState};
+
+handle_call(status = _Request, _From, State = #state{counters = Counters}) ->
+  Planned = case State of
+    #state{plan = no_plan} -> undefined;
+    #state{plan = C} -> C
+  end,
+  Total = Counters#counters.tests,
+  Failed = Counters#counters.failures,
+  TODO = Counters#counters.todo_failures,
+  {reply, {Planned, Total, Failed, TODO}, State};
 
 %% unknown calls
 handle_call(_Request, _From, State) ->
@@ -271,6 +307,63 @@ code_change(_OldVsn, State, _Extra) ->
 format(Term) ->
   % no term should weigh 1MB
   io_lib:print(Term, 1, 1024 * 1024, -1).
+
+%% @doc Print message to screen.
+%%   The message doesn't need to end with NL character.
+
+-spec print(string(), [term()], #state{}) ->
+  ok.
+
+print(Format, Args, _State = #state{level = Level}) ->
+  Indent = ["    " || _ <- lists:seq(1, Level)],
+  Text = iolist_to_binary(io_lib:format(Format, Args)),
+  Lines = binary:split(Text, <<"\n">>, [global, trim]),
+  [io:put_chars([Indent, L, "\n"]) || L <- Lines],
+  ok.
+
+%%----------------------------------------------------------
+
+%% @doc Add 1 to skipped tests counter.
+
+add_skipped(Counters = #counters{tests = T, skipped = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, skipped = N + 1}.
+
+%% @doc Add 1 to successes or failures counter, depending on the `Result'.
+
+add_result(success = _Result,
+           Counters = #counters{tests = T, successes = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, successes = N + 1};
+
+add_result({failure, _} = _Result,
+           Counters = #counters{tests = T, failures = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, failures = N + 1};
+
+add_result({dubious, _} = _Result,
+           Counters = #counters{tests = T, failures = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, failures = N + 1};
+
+add_result({died, _} = _Result,
+           Counters = #counters{tests = T, failures = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, failures = N + 1}.
+
+%% @doc Add 1 to TODO successes or failures counter, depending on the
+%%   `Result'.
+
+add_todo(success = _Result,
+         Counters = #counters{tests = T, todo_successes = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, todo_successes = N + 1};
+
+add_todo({failure, _} = _Result,
+         Counters = #counters{tests = T, todo_failures = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, todo_failures = N + 1};
+
+add_todo({dubious, _} = _Result,
+         Counters = #counters{tests = T, todo_failures = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, todo_failures = N + 1};
+
+add_todo({died, _} = _Result,
+         Counters = #counters{tests = T, todo_failures = N}) ->
+  _NewCounters = Counters#counters{tests = T + 1, todo_failures = N + 1}.
 
 %%----------------------------------------------------------
 

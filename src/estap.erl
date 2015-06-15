@@ -17,7 +17,7 @@
 
 %% public interface
 -export([ok/2, is/3, isnt/3, eq/3, ne/3, cmp/4, like/3, unlike/3, matches/3]).
--export([bail_out/1, plan/0, plan/1, all_ok/0]).
+-export([bail_out/1, no_plan/0, plan/1, all_ok/0]).
 -export([diag/1, diag/2, note/1, note/2, explain/1]).
 
 -export_type([value/0, cmp/0, regexp/0, match_fun/0]).
@@ -47,66 +47,109 @@
 %% @doc Check if `Value' is any of the recognized truth values.
 
 -spec ok(value(), description()) ->
-  'TODO'.
+  ok.
 
-ok(_Value, _Description) ->
-  'TODO'.
+ok(Value, Description) ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  estap_server:report_result(TestRun, estap_test:success_or_failure(Value)).
 
 %% @doc Check if `Value' is the same as `Expected'.
 
 -spec is(value(), value(), description()) ->
-  'TODO'.
+  ok.
 
-is(_Value, _Expected, _Description) ->
-  'TODO'.
+is(Value, Expected, Description) ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  case Value of
+    Expected ->
+      estap_server:report_result(TestRun, {success, true});
+    _ ->
+      estap_server:report_result(TestRun, {failure, false})
+  end.
 
 %% @doc Check if `Value' is different than `Expected'.
 
 -spec isnt(value(), value(), description()) ->
-  'TODO'.
+  ok.
 
-isnt(_Value, _Expected, _Description) ->
-  'TODO'.
+isnt(Value, Expected, Description) ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  case Value of
+    Expected ->
+      estap_server:report_result(TestRun, {failure, false});
+    _ ->
+      estap_server:report_result(TestRun, {success, true})
+  end.
 
 %% @doc Check if `Value' is equal (`==') to `Expected'.
 
 -spec eq(value(), value(), description()) ->
-  'TODO'.
+  ok.
 
 eq(Value, Expected, Description) ->
+  % XXX: no `get_test_run()' call
   cmp(Value, '==', Expected, Description).
 
 %% @doc Check if `Value' is not equal (`/=') to `Expected'.
 
 -spec ne(value(), value(), description()) ->
-  'TODO'.
+  ok.
 
 ne(Value, Expected, Description) ->
+  % XXX: no `get_test_run()' call
   cmp(Value, '/=', Expected, Description).
 
 %% @doc Compare `Value' and `Expected' using comparison operator.
 
 -spec cmp(value(), cmp(), value(), description()) ->
-  'TODO'.
+  ok.
 
-cmp(_Value, _Cmp, _Expected, _Description) ->
-  'TODO'.
+cmp(Value, Cmp, Expected, Description) ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  CmpResult = case Cmp of
+    '<'   -> Value <   Expected;
+    '>'   -> Value >   Expected;
+    '=<'  -> Value =<  Expected;
+    '>='  -> Value >=  Expected;
+    '/='  -> Value /=  Expected;
+    '=/=' -> Value =/= Expected;
+    '=='  -> Value ==  Expected;
+    '=:=' -> Value =:= Expected
+  end,
+  case CmpResult of
+    true  -> estap_server:report_result(TestRun, {success, true});
+    false -> estap_server:report_result(TestRun, {failure, false})
+  end.
 
 %% @doc Check if `Value' matches a regexp.
 
 -spec like(value(), regexp(), description()) ->
-  'TODO'.
+  ok.
 
-like(_Value, _Expected, _Description) ->
-  'TODO'.
+like(Value, Expected, Description) ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  case re:run(Value, Expected) of
+    {match, _Capture} -> estap_server:report_result(TestRun, {success, true});
+    nomatch           -> estap_server:report_result(TestRun, {failure, false})
+  end.
 
 %% @doc Check if `Value' not matches a regexp.
 
 -spec unlike(value(), regexp(), description()) ->
-  'TODO'.
+  ok.
 
-unlike(_Value, _Expected, _Description) ->
-  'TODO'.
+unlike(Value, Expected, Description) ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  case re:run(Value, Expected) of
+    {match, _Capture} -> estap_server:report_result(TestRun, {failure, false});
+    nomatch           -> estap_server:report_result(TestRun, {success, true})
+  end.
 
 %% @doc Check if `Value' pattern-matches.
 %%   Pattern is specified as a fun that has clauses defined only for what
@@ -114,14 +157,24 @@ unlike(_Value, _Expected, _Description) ->
 %%   error. Return value of the fun is ignored.
 
 -spec matches(value(), match_fun(), description()) ->
-  'TODO'.
+  ok.
 
-matches(_Value, _MatchSpec, _Description) ->
-  'TODO'.
+matches(Value, MatchSpec, Description) ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  try
+    MatchSpec(Value),
+    estap_server:report_result(TestRun, {success, true})
+  catch
+    error:function_clause ->
+      estap_server:report_result(TestRun, {failure, false})
+  end.
 
 %%%---------------------------------------------------------------------------
 
 %% @doc Stop testing current suite because something terrible happened.
+%%
+%% @TODO Implement this function.
 
 -spec bail_out(message()) ->
   no_return().
@@ -134,33 +187,41 @@ bail_out(_Message) ->
 %%
 %% @see all_ok/0
 
--spec plan() ->
-  'TODO'.
+-spec no_plan() ->
+  ok.
 
-plan() ->
-  'TODO'.
+no_plan() ->
+  _TestRun = get_test_run(),
+  ok.
 
 %% @doc Set expected number of sub-tests.
 
 -spec plan(pos_integer()) ->
-  'TODO'.
+  ok.
 
-plan(_TestCount) ->
-  'TODO'.
+plan(TestCount) when is_integer(TestCount) ->
+  TestRun = estap_server:subplan(TestCount, 1),
+  set_test_run(TestRun),
+  ok.
 
 %% @doc Check if all the current sub-tests were OK.
 %%   Function intended to be called at the end of a sequence of sub-tests, to
 %%   indicate that the test sequence passed or failed.
 
 -spec all_ok() ->
-  'TODO'.
+  true | false.
 
 all_ok() ->
-  'TODO'.
+  TestRun = get_test_run(),
+  {Planned, Total, Failed, _TODO} = estap_server:get_status(TestRun),
+  estap_server:done(TestRun), % this ends estap_server, so it goes last
+  (Failed == 0) and ((Planned == undefined) or (Planned == Total)).
 
 %%%---------------------------------------------------------------------------
 
 %% @doc Print a warning.
+%%
+%% @TODO Implement this function.
 
 -spec diag(message()) ->
   'TODO'.
@@ -169,6 +230,8 @@ diag(_Message) ->
   'TODO'.
 
 %% @doc Print a warning with some context.
+%%
+%% @TODO Implement this function.
 
 -spec diag(message(), [info()]) ->
   'TODO'.
@@ -177,6 +240,8 @@ diag(_Message, _Info) ->
   'TODO'.
 
 %% @doc Print a message.
+%%
+%% @TODO Implement this function.
 
 -spec note(message()) ->
   'TODO'.
@@ -185,6 +250,8 @@ note(_Message) ->
   'TODO'.
 
 %% @doc Print a message with some context.
+%%
+%% @TODO Implement this function.
 
 -spec note(message(), [info()]) ->
   'TODO'.
@@ -194,12 +261,35 @@ note(_Message, _Info) ->
 
 %% @doc Format term so it can be printed to screen.
 %%   Convenience wrapper for {@link io_lib:format/2}.
+%% @spec explain(term()) ->
+%%   iolist()
+%%
+%% @TODO Implement this function.
 
 -spec explain(term()) ->
-  iolist().
+  'TODO'.
 
 explain(_Term) ->
   'TODO'.
+
+%%%---------------------------------------------------------------------------
+
+%% @doc Set previously started {@link estap_server}.
+
+set_test_run(TestRun) ->
+  put(estap_server, TestRun).
+
+%% @doc Get associated {@link estap_server}, starting it if necessary.
+
+get_test_run() ->
+  case get(estap_server) of
+    undefined ->
+      TestRun = estap_server:subplan(no_plan, 1),
+      put(estap_server, TestRun),
+      TestRun;
+    TestRun when is_pid(TestRun) ->
+      TestRun
+  end.
 
 %%%---------------------------------------------------------------------------
 %%% vim:ft=erlang:foldmethod=marker
