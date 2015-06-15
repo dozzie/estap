@@ -27,6 +27,8 @@ TAP consumers like `prove' command.
   <li>compile forms to bytecode and load the module</li>
   <li>start {@link estap_server} for tracking test cases</li>
   <li>consecutively call each test function in a separate process</li>
+  <li>for subtests, spawn a new {@link estap_server} and put its pid in
+      process dictionary</li>
 </ol>
 
 <!-- vim:set ft=edoc: -->

@@ -1,8 +1,6 @@
 {application, estap, [
-  {description, ""},
+  {description, "escript TAP producer"},
   {vsn, "0.0.0"},
   {registered, []},
-  {applications, [kernel, stdlib, crypto]},
-  {mod, {estap_app, []}},
-  {env, []}
+  {applications, [kernel, stdlib, crypto]}
 ]}.
