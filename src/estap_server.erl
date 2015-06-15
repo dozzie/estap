@@ -9,13 +9,11 @@
 -behaviour(gen_server).
 
 %% public interface
--export([no_plan/0, plan/1, done/1]).
--export([running/2]).
--export([test_skipped/2, test_todo/3]).
--export([test_passed/1, test_failed/2, dubious_result/2, test_died/2]).
+-export([no_plan/0, plan/1, subplan/2, done/1]).
+-export([running/2, report_result/2, report_result_todo/3, report_skipped/2]).
 
 %% supervision tree API
--export([start/1, start_link/1]).
+-export([start/2, start_link/2]).
 
 %% gen_server callbacks
 -export([init/1, terminate/2]).
@@ -32,6 +30,7 @@
 
 -record(state, {
   plan :: plan(),
+  level = 0 :: non_neg_integer(),
   test :: {TestNo :: pos_integer(), Description :: string()}
 }).
 
@@ -45,7 +44,7 @@
   test_run_id().
 
 no_plan() ->
-  {ok, Pid} = start_link(no_plan),
+  {ok, Pid} = start_link(no_plan, 0),
   Pid.
 
 %% @doc Test plan.
@@ -54,7 +53,16 @@ no_plan() ->
   test_run_id().
 
 plan(TestCount) when is_integer(TestCount) ->
-  {ok, Pid} = start_link(TestCount),
+  {ok, Pid} = start_link(TestCount, 0),
+  Pid.
+
+%% @doc Plan for subtests.
+
+-spec subplan(plan(), pos_integer()) ->
+  test_run_id().
+
+subplan(TestCount, Level) when is_integer(TestCount), is_integer(Level) ->
+  {ok, Pid} = start_link(TestCount, Level),
   Pid.
 
 %% @doc Mark the end of tests in this run.
@@ -73,55 +81,49 @@ done(TestRunId) ->
 running(TestRunId, Description) ->
   gen_server:call(TestRunId, {next, Description}).
 
-%% @doc Mark the end of a test with a success.
+%% @doc Report result of running a test started at {@link running/2}.
 
--spec test_passed(test_run_id()) ->
+-spec report_result(test_run_id(),
+                    {success | failure | dubious | died, term()}) ->
   ok.
 
-test_passed(TestRunId) ->
-  gen_server:call(TestRunId, {result, success}).
+report_result(TestRunId, {success, _Value} = _TestResult) ->
+  gen_server:call(TestRunId, {result, success});
 
-%% @doc Mark the end of a test with a failure.
+report_result(TestRunId, {failure, ReturnValue} = _TestResult) ->
+  gen_server:call(TestRunId, {result, {failure, ReturnValue}});
 
--spec test_failed(test_run_id(), term()) ->
-  ok.
+report_result(TestRunId, {dubious, ReturnValue} = _TestResult) ->
+  gen_server:call(TestRunId, {result, {dubious, ReturnValue}});
 
-test_failed(TestRunId, ReturnValue) ->
-  gen_server:call(TestRunId, {result, {failure, ReturnValue}}).
-
-%% @doc Mark the end of a test with a failure, but a dubious one.
-
--spec dubious_result(test_run_id(), term()) ->
-  ok.
-
-dubious_result(TestRunId, ReturnValue) ->
-  gen_server:call(TestRunId, {result, {dubious, ReturnValue}}).
-
-%% @doc Mark the end of a test with an exception.
-%%   This means that the test function, which was called in `Pid' process,
-%%   simply died.
-
--spec test_died(test_run_id(), term()) ->
-  ok.
-
-test_died(TestRunId, Reason) ->
+report_result(TestRunId, {died, Reason} = _TestResult) ->
   gen_server:call(TestRunId, {result, {died, Reason}}).
 
-%% @doc Mark the test as skipped.
+%% @doc Report result of running a TODO test started at {@link running/2}.
 
--spec test_skipped(test_run_id(), string()) ->
+-spec report_result_todo(test_run_id(), string(),
+                         {success | failure | dubious | died, term()}) ->
   ok.
 
-test_skipped(TestRunId, Reason) ->
-  gen_server:call(TestRunId, {skipped, Reason}).
+report_result_todo(TestRunId, Why, {success, _Value} = _TestResult) ->
+  gen_server:call(TestRunId, {todo, success, Why});
 
-%% @doc Mark the test as "TODO".
+report_result_todo(TestRunId, Why, {failure, ReturnValue} = _TestResult) ->
+  gen_server:call(TestRunId, {todo, {failure, ReturnValue}, Why});
 
--spec test_todo(test_run_id(), term(), string()) ->
+report_result_todo(TestRunId, Why, {dubious, ReturnValue} = _TestResult) ->
+  gen_server:call(TestRunId, {todo, {dubious, ReturnValue}, Why});
+
+report_result_todo(TestRunId, Why, {died, Reason} = _TestResult) ->
+  gen_server:call(TestRunId, {todo, {died, Reason}, Why}).
+
+%% @doc Report that a test started at {@link running/2} was skipped.
+
+-spec report_skipped(test_run_id(), string()) ->
   ok.
 
-test_todo(TestRunId, Result, Why) ->
-  gen_server:call(TestRunId, {todo, Result, Why}).
+report_skipped(TestRunId, Why) ->
+  gen_server:call(TestRunId, {skipped, Why}).
 
 %%%---------------------------------------------------------------------------
 %%% supervision tree API
@@ -130,19 +132,19 @@ test_todo(TestRunId, Result, Why) ->
 %% @private
 %% @doc Start the process.
 
--spec start(plan()) ->
+-spec start(plan(), non_neg_integer()) ->
   {ok, pid()} | {error, term()}.
 
-start(Plan) ->
+start(Plan, _Level) ->
   gen_server:start(?MODULE, [Plan], []).
 
 %% @private
 %% @doc Start the process.
 
--spec start_link(plan()) ->
+-spec start_link(plan(), non_neg_integer()) ->
   {ok, pid()} | {error, term()}.
 
-start_link(Plan) ->
+start_link(Plan, _Level) ->
   gen_server:start_link(?MODULE, [Plan], []).
 
 %%%---------------------------------------------------------------------------
@@ -210,11 +212,6 @@ handle_call({result, TestResult} = _Request, _From,
   end,
   {reply, ok, State};
 
-handle_call({skipped, Reason} = _Request, _From,
-            State = #state{test = {TestNo, TestDesc}}) ->
-  io:fwrite("ok ~B - ~s # SKIP ~s~n", [TestNo, TestDesc, Reason]),
-  {reply, ok, State};
-
 handle_call({todo, TestResult, Why} = _Request, _From,
             State = #state{test = {TestNo, TestDesc}}) ->
   case TestResult of
@@ -227,6 +224,11 @@ handle_call({todo, TestResult, Why} = _Request, _From,
     {died, _Reason} ->
       io:fwrite("not ok ~B - ~s # TODO ~s~n", [TestNo, TestDesc, Why])
   end,
+  {reply, ok, State};
+
+handle_call({skipped, Reason} = _Request, _From,
+            State = #state{test = {TestNo, TestDesc}}) ->
+  io:fwrite("ok ~B - ~s # SKIP ~s~n", [TestNo, TestDesc, Reason]),
   {reply, ok, State};
 
 %% unknown calls

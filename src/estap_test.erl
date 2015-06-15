@@ -55,30 +55,13 @@ run_tests(TestRun, [{TestFunSpec, Description, Status} | Rest] = _Tests) ->
   estap_server:running(TestRun, Description),
   case Status of
     run ->
-      case test(TestFunSpec) of
-        {success, _Result} ->
-          estap_server:test_passed(TestRun);
-        {failure, Result} ->
-          estap_server:test_failed(TestRun, Result);
-        {dubious, Result} ->
-          estap_server:dubious_result(TestRun, Result);
-        {died, Reason} ->
-          estap_server:test_died(TestRun, Reason)
-      end;
+      Result = test(TestFunSpec),
+      estap_server:report_result(TestRun, Result);
     {todo, Why} ->
-      %estap_server:test_todo(TestRun, Why)
-      case test(TestFunSpec) of
-        {success, _Result} ->
-          estap_server:test_todo(TestRun, success, Why);
-        {failure, Result} ->
-          estap_server:test_todo(TestRun, {failure, Result}, Why);
-        {dubious, Result} ->
-          estap_server:test_todo(TestRun, {dubious, Result}, Why);
-        {died, Reason} ->
-          estap_server:test_todo(TestRun, {died, Reason}, Why)
-      end;
+      Result = test(TestFunSpec),
+      estap_server:report_result_todo(TestRun, Why, Result);
     {skip, Why} ->
-      estap_server:test_skipped(TestRun, Why)
+      estap_server:report_skipped(TestRun, Why)
   end,
   run_tests(TestRun, Rest).
 
