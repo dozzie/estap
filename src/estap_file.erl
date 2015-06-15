@@ -27,11 +27,6 @@
   skip = false :: {true, Reason :: string()} | false
 }).
 
--type test() :: {Func :: {module(), atom()}, Description :: string(),
-                  Status :: run | {todo | skip, Why :: string()}}.
-
--type test_plan() :: {plan, pos_integer()} | no_plan.
-
 %%% }}}
 %%%---------------------------------------------------------------------------
 %%% public interface
@@ -166,7 +161,8 @@ parse_file(File, IncludePath) ->
 %%   Function returns list of tests to run, in order of their appearance.
 
 -spec load_code([erl_parse:abstract_form()]) ->
-  {ok, {test_plan(), [test()]}} | {error, sticky_directory | not_purged}.
+    {ok, {estap_test:test_plan(), [estap_test:test()]}}
+  | {error, sticky_directory | not_purged}.
 
 load_code(Forms) ->
   Exports = sets:from_list(exports(Forms)),

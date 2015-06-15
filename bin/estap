@@ -10,72 +10,8 @@ main(["--help"]) ->
 main([File]) ->
   {ok, {_Module, Forms}} = estap_file:read_file(File, []),
   {ok, {Plan, Tests}} = estap_file:load_code(Forms),
-  TestRunId = case Plan of
-    no_plan -> estap_server:no_plan();
-    {plan, C} -> estap_server:plan(C)
-  end,
-  run_tests(Tests, TestRunId).
-
-%%----------------------------------------------------------------------------
-
-run_tests([] = _Tests, TestRunId) ->
-  estap_server:done(TestRunId),
-  ok;
-run_tests([{{Mod, Func}, Description, Status} | Rest] = _Tests, TestRunId) ->
-  % TODO: bail out support
-  estap_server:running(TestRunId, Description),
-  case Status of
-    run ->
-      case run_test(Mod, Func) of
-        {success, _Result} ->
-          estap_server:test_passed(TestRunId);
-        {failure, Result} ->
-          estap_server:test_failed(TestRunId, Result);
-        {dubious, Result} ->
-          estap_server:dubious_result(TestRunId, Result);
-        {died, Reason} ->
-          estap_server:test_died(TestRunId, Reason)
-      end;
-    {skip, Why} ->
-      estap_server:test_skipped(TestRunId, Why);
-    {todo, Why} ->
-      estap_server:test_todo(TestRunId, Why)
-  end,
-  run_tests(Rest, TestRunId).
-
-%%----------------------------------------------------------------------------
-
-run_test(Mod, Func) ->
-  Self = self(),
-  ResultRef = make_ref(),
-  {Pid, MonitorRef} = spawn_monitor(
-    fun() ->
-      TestResult = try Mod:Func() of
-        ok          -> {success, ok};
-        {ok, Value} -> {success, {ok, Value}};
-        true        -> {success, true};
-        error           -> {failure, error};
-        {error, Reason} -> {failure, {error, Reason}};
-        false           -> {failure, false};
-        Result          -> {dubious, Result}
-      catch
-        throw:ok          -> {success, ok};
-        throw:{ok, Value} -> {success, {ok, Value}};
-        throw:true        -> {success, true};
-        throw:error           -> {failure, error};
-        throw:{error, Reason} -> {failure, {error, Reason}};
-        throw:false           -> {failure, false}
-      end,
-      Self ! {result, ResultRef, TestResult}
-    end
-  ),
-  receive
-    {result, ResultRef, TestResult} ->
-      erlang:demonitor(MonitorRef, [flush]),
-      TestResult;
-    {'DOWN', MonitorRef, process, Pid, Reason} ->
-      {died, Reason}
-  end.
+  estap_test:run(Plan, Tests),
+  ok.
 
 %%----------------------------------------------------------------------------
 %% vim:ft=erlang
