@@ -9,7 +9,9 @@
 -behaviour(gen_server).
 
 %% public interface
--export([]).
+-export([no_plan/0, plan/1, done/1]).
+-export([running/2, join_test/1, test_skipped/3, test_todo/3]).
+-export([test_passed/1, test_failed/2, dubious_result/2, test_died/2]).
 
 %% supervision tree API
 -export([start/0, start_link/0]).
@@ -21,12 +23,80 @@
 
 %%%---------------------------------------------------------------------------
 
+-type test_run_id() :: reference().
+
 -record(state, {
 }).
 
 %%%---------------------------------------------------------------------------
 %%% public interface
 %%%---------------------------------------------------------------------------
+
+%% @doc "No plan" plan.
+
+-spec no_plan() ->
+  test_run_id().
+
+no_plan() ->
+  'TODO'.
+
+%% @doc Test plan.
+
+-spec plan(pos_integer()) ->
+  test_run_id().
+
+plan(_TestCount) ->
+  'TODO'.
+
+%% @doc Mark the end of tests in this run.
+
+done(_TestRunId) ->
+  'TODO'.
+
+%% @doc Mark the beginning of new test.
+%%   Call this before call to test function.
+
+running(_TestRunId, _Description) ->
+  'TODO'.
+
+%% @doc Mark the end of a test with a success.
+
+test_passed(_TestRunId) ->
+  'TODO'.
+
+%% @doc Mark the end of a test with a failure.
+
+test_failed(_TestRunId, _Value) ->
+  'TODO'.
+
+%% @doc Mark the end of a test with a failure, but a dubious one.
+
+dubious_result(_TestRunId, _Value) ->
+  'TODO'.
+
+%% @doc Mark the end of a test with an exception.
+%%   This means that the test function, which was called in `Pid' process,
+%%   simply died.
+
+test_died(_Pid, _Reason) ->
+  % XXX: synchronous call
+  'TODO'.
+
+%% @doc Wait until all the processing of test results submitted by `Pid' is
+%%   finished.
+
+join_test(_Pid) ->
+  'TODO'.
+
+%% @doc Mark the test as skipped.
+
+test_skipped(_TestRunId, _Description, _Reason) ->
+  'TODO'.
+
+%% @doc Mark the test as "TODO".
+
+test_todo(_TestRunId, _Description, _Reason) ->
+  'TODO'.
 
 %%%---------------------------------------------------------------------------
 %%% supervision tree API
