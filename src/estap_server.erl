@@ -10,11 +10,12 @@
 
 %% public interface
 -export([no_plan/0, plan/1, done/1]).
--export([running/2, join_test/1, test_skipped/3, test_todo/3]).
+-export([running/2]).
+-export([test_skipped/2, test_todo/2]).
 -export([test_passed/1, test_failed/2, dubious_result/2, test_died/2]).
 
 %% supervision tree API
--export([start/0, start_link/0]).
+-export([start/1, start_link/1]).
 
 %% gen_server callbacks
 -export([init/1, terminate/2]).
@@ -23,9 +24,13 @@
 
 %%%---------------------------------------------------------------------------
 
--type test_run_id() :: reference().
+-type test_run_id() :: pid().
+
+-type plan() :: no_plan | pos_integer().
 
 -record(state, {
+  plan :: plan(),
+  test :: {TestNo :: pos_integer(), Description :: string()}
 }).
 
 %%%---------------------------------------------------------------------------
@@ -38,65 +43,83 @@
   test_run_id().
 
 no_plan() ->
-  'TODO'.
+  {ok, Pid} = start_link(no_plan),
+  Pid.
 
 %% @doc Test plan.
 
 -spec plan(pos_integer()) ->
   test_run_id().
 
-plan(_TestCount) ->
-  'TODO'.
+plan(TestCount) when is_integer(TestCount) ->
+  {ok, Pid} = start_link(TestCount),
+  Pid.
 
 %% @doc Mark the end of tests in this run.
 
-done(_TestRunId) ->
-  'TODO'.
+-spec done(test_run_id()) ->
+  ok.
+
+done(TestRunId) ->
+  gen_server:call(TestRunId, done).
 
 %% @doc Mark the beginning of new test.
-%%   Call this before call to test function.
 
-running(_TestRunId, _Description) ->
-  'TODO'.
+-spec running(test_run_id(), string()) ->
+  ok.
+
+running(TestRunId, Description) ->
+  gen_server:call(TestRunId, {next, Description}).
 
 %% @doc Mark the end of a test with a success.
 
-test_passed(_TestRunId) ->
-  'TODO'.
+-spec test_passed(test_run_id()) ->
+  ok.
+
+test_passed(TestRunId) ->
+  gen_server:call(TestRunId, {result, success}).
 
 %% @doc Mark the end of a test with a failure.
 
-test_failed(_TestRunId, _Value) ->
-  'TODO'.
+-spec test_failed(test_run_id(), term()) ->
+  ok.
+
+test_failed(TestRunId, ReturnValue) ->
+  gen_server:call(TestRunId, {result, {failure, ReturnValue}}).
 
 %% @doc Mark the end of a test with a failure, but a dubious one.
 
-dubious_result(_TestRunId, _Value) ->
-  'TODO'.
+-spec dubious_result(test_run_id(), term()) ->
+  ok.
+
+dubious_result(TestRunId, ReturnValue) ->
+  gen_server:call(TestRunId, {result, {dubious, ReturnValue}}).
 
 %% @doc Mark the end of a test with an exception.
 %%   This means that the test function, which was called in `Pid' process,
 %%   simply died.
 
-test_died(_Pid, _Reason) ->
-  % XXX: synchronous call
-  'TODO'.
+-spec test_died(test_run_id(), term()) ->
+  ok.
 
-%% @doc Wait until all the processing of test results submitted by `Pid' is
-%%   finished.
-
-join_test(_Pid) ->
-  'TODO'.
+test_died(TestRunId, Reason) ->
+  gen_server:call(TestRunId, {result, {died, Reason}}).
 
 %% @doc Mark the test as skipped.
 
-test_skipped(_TestRunId, _Description, _Reason) ->
-  'TODO'.
+-spec test_skipped(test_run_id(), string()) ->
+  ok.
+
+test_skipped(TestRunId, Reason) ->
+  gen_server:call(TestRunId, {skipped, Reason}).
 
 %% @doc Mark the test as "TODO".
 
-test_todo(_TestRunId, _Description, _Reason) ->
-  'TODO'.
+-spec test_todo(test_run_id(), string()) ->
+  ok.
+
+test_todo(TestRunId, Reason) ->
+  gen_server:call(TestRunId, {todo, Reason}).
 
 %%%---------------------------------------------------------------------------
 %%% supervision tree API
@@ -105,14 +128,20 @@ test_todo(_TestRunId, _Description, _Reason) ->
 %% @private
 %% @doc Start the process.
 
-start() ->
-  gen_server:start({local, ?MODULE}, ?MODULE, [], []).
+-spec start(plan()) ->
+  {ok, pid()} | {error, term()}.
+
+start(Plan) ->
+  gen_server:start(?MODULE, [Plan], []).
 
 %% @private
 %% @doc Start the process.
 
-start_link() ->
-  gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
+-spec start_link(plan()) ->
+  {ok, pid()} | {error, term()}.
+
+start_link(Plan) ->
+  gen_server:start_link(?MODULE, [Plan], []).
 
 %%%---------------------------------------------------------------------------
 %%% gen_server callbacks
@@ -124,8 +153,12 @@ start_link() ->
 %% @private
 %% @doc Initialize event handler.
 
-init(_Args) ->
-  State = #state{},
+init([Plan] = _Args) ->
+  case Plan of
+    no_plan -> skip;
+    C when is_integer(C) -> io:fwrite("1..~B~n", [C])
+  end,
+  State = #state{plan = Plan},
   {ok, State}.
 
 %% @private
@@ -140,6 +173,53 @@ terminate(_Arg, _State) ->
 
 %% @private
 %% @doc Handle {@link gen_server:call/2}.
+
+handle_call(done = _Request, _From,
+            State = #state{plan = Plan, test = {LastTestNo, _}}) ->
+  case Plan of
+    no_plan -> io:fwrite("1..~B~n", [LastTestNo]);
+    C when is_integer(C) -> io:fwrite("# ran ~B of ~B tests~n", [LastTestNo, C])
+  end,
+  {stop, normal, ok, State};
+
+handle_call({next, Desc} = _Request, _From,
+            State = #state{test = Test}) ->
+  NextTestNo = case Test of
+    undefined -> 1;
+    {TestNo, _} -> TestNo + 1
+  end,
+  %io:fwrite("# running test ~B: ~s~n", [NextTestNo, Desc]),
+  NewState = State#state{test = {NextTestNo, Desc}},
+  {reply, ok, NewState};
+
+handle_call({result, TestResult} = _Request, _From,
+            State = #state{test = {TestNo, TestDesc}}) ->
+  case TestResult of
+    success ->
+      io:fwrite("ok ~B - ~s~n", [TestNo, TestDesc]);
+    {failure, Reason} ->
+      io:fwrite("not ok ~B - ~s # result: ~s~n",
+                [TestNo, TestDesc, format(Reason)]);
+    {dubious, Value} ->
+      io:fwrite("not ok ~B - ~s # dubious result: ~s~n",
+                [TestNo, TestDesc, format(Value)]);
+    {died, Reason} ->
+      io:fwrite("not ok ~B - ~s # died: ~s~n",
+                [TestNo, TestDesc, format(Reason)])
+  end,
+  {reply, ok, State};
+
+handle_call({skipped, Reason} = _Request, _From,
+            State = #state{test = {TestNo, TestDesc}}) ->
+  % TODO: OK or NOK?
+  io:fwrite("ok ~B - ~s # SKIP: ~s~n", [TestNo, TestDesc, Reason]),
+  {reply, ok, State};
+
+handle_call({todo, Reason} = _Request, _From,
+            State = #state{test = {TestNo, TestDesc}}) ->
+  % TODO: OK or NOK?
+  io:fwrite("ok ~B - ~s # TODO: ~s~n", [TestNo, TestDesc, Reason]),
+  {reply, ok, State};
 
 %% unknown calls
 handle_call(_Request, _From, State) ->
@@ -170,6 +250,17 @@ code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
 %% }}}
+%%----------------------------------------------------------
+
+%% @doc Format term for printing to screen.
+
+-spec format(term()) ->
+  iolist().
+
+format(Term) ->
+  % no term should weigh 1MB
+  io_lib:print(Term, 1, 1024 * 1024, -1).
+
 %%----------------------------------------------------------
 
 %%%---------------------------------------------------------------------------

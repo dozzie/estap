@@ -14,7 +14,6 @@ main([File]) ->
     no_plan -> estap_server:no_plan();
     {plan, C} -> estap_server:plan(C)
   end,
-  io:fwrite("plan: ~p~ntests: ~p~n", [Plan, Tests]),
   run_tests(Tests, TestRunId).
 
 %%----------------------------------------------------------------------------
@@ -24,44 +23,59 @@ run_tests([] = _Tests, TestRunId) ->
   ok;
 run_tests([{{Mod, Func}, Description, Status} | Rest] = _Tests, TestRunId) ->
   % TODO: bail out support
+  estap_server:running(TestRunId, Description),
   case Status of
     run ->
-      {Pid, Ref} = spawn_monitor(
-        fun() ->
-          estap_server:running(TestRunId, Description),
-          try Mod:Func() of
-            ok           -> estap_server:test_passed(TestRunId);
-            {ok, _Value} -> estap_server:test_passed(TestRunId);
-            true         -> estap_server:test_passed(TestRunId);
-            error           -> estap_server:test_failed(TestRunId, error);
-            {error, Reason} -> estap_server:test_failed(TestRunId, {error, Reason});
-            false           -> estap_server:test_failed(TestRunId, false);
-            Result          -> estap_server:dubious_result(TestRunId, Result)
-          catch
-            throw:ok           -> estap_server:test_passed(TestRunId);
-            throw:{ok, _Value} -> estap_server:test_passed(TestRunId);
-            throw:true         -> estap_server:test_passed(TestRunId);
-            throw:error           -> estap_server:test_failed(TestRunId, error);
-            throw:{error, Reason} -> estap_server:test_failed(TestRunId, {error, Reason});
-            throw:false           -> estap_server:test_failed(TestRunId, false)
-          end
-        end
-      ),
-      receive
-        {'DOWN', Ref, process, Pid, normal} ->
-          estap_server:join_test(Pid);
-        {'DOWN', Ref, process, Pid, Reason} ->
-          estap_server:test_died(Pid, Reason)
-      end,
-      run;
+      case run_test(Mod, Func) of
+        {success, _Result} ->
+          estap_server:test_passed(TestRunId);
+        {failure, Result} ->
+          estap_server:test_failed(TestRunId, Result);
+        {dubious, Result} ->
+          estap_server:dubious_result(TestRunId, Result);
+        {died, Reason} ->
+          estap_server:test_died(TestRunId, Reason)
+      end;
     {skip, Why} ->
-      estap_server:test_skipped(TestRunId, Description, Why),
-      skip;
+      estap_server:test_skipped(TestRunId, Why);
     {todo, Why} ->
-      estap_server:test_todo(TestRunId, Description, Why),
-      todo
+      estap_server:test_todo(TestRunId, Why)
   end,
   run_tests(Rest, TestRunId).
+
+%%----------------------------------------------------------------------------
+
+run_test(Mod, Func) ->
+  Self = self(),
+  ResultRef = make_ref(),
+  {Pid, MonitorRef} = spawn_monitor(
+    fun() ->
+      TestResult = try Mod:Func() of
+        ok          -> {success, ok};
+        {ok, Value} -> {success, {ok, Value}};
+        true        -> {success, true};
+        error           -> {failure, error};
+        {error, Reason} -> {failure, {error, Reason}};
+        false           -> {failure, false};
+        Result          -> {dubious, Result}
+      catch
+        throw:ok          -> {success, ok};
+        throw:{ok, Value} -> {success, {ok, Value}};
+        throw:true        -> {success, true};
+        throw:error           -> {failure, error};
+        throw:{error, Reason} -> {failure, {error, Reason}};
+        throw:false           -> {failure, false}
+      end,
+      Self ! {result, ResultRef, TestResult}
+    end
+  ),
+  receive
+    {result, ResultRef, TestResult} ->
+      erlang:demonitor(MonitorRef, [flush]),
+      TestResult;
+    {'DOWN', MonitorRef, process, Pid, Reason} ->
+      {died, Reason}
+  end.
 
 %%----------------------------------------------------------------------------
 %% vim:ft=erlang
