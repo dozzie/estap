@@ -10,8 +10,29 @@ main(["--help"]) ->
 main([File]) ->
   {ok, {_Module, Forms}} = estap_file:read_file(File, []),
   {ok, {Plan, Tests}} = estap_file:load_code(Forms),
+  case find_ebin(File) of
+    {ok, Path} -> code:add_patha(Path);
+    nothing -> ok
+  end,
   estap_test:run(Plan, Tests),
   ok.
+
+%%----------------------------------------------------------------------------
+
+-include_lib("kernel/include/file.hrl").
+
+find_ebin(Path) ->
+  EBin = filename:join(Path, ebin),
+  case file:read_file_info(EBin) of
+    {ok, #file_info{type = directory}} ->
+      {ok, EBin};
+    _ ->
+      case Path of
+        "." -> nothing; % don't check parent
+        "/" -> nothing; % no parent
+        _ -> find_ebin(filename:dirname(Path))
+      end
+  end.
 
 %%----------------------------------------------------------------------------
 %% vim:ft=erlang
