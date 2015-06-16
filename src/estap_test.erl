@@ -95,6 +95,14 @@ test({Mod, Func} = _TestFunSpec) ->
   ok.
 
 call({Pid, Ref} = _ResultTo, Mod, Fun, Args) ->
+  % XXX: putting `test_dir' to proc dict is an important thing for
+  % `estap:test_dir()' function
+  ModuleAttrs = Mod:module_info(attributes),
+  case proplists:get_value(test_dir, ModuleAttrs) of
+    [DirName] -> put(test_dir, DirName);
+    DirName when is_list(DirName) -> put(test_dir, DirName);
+    _ -> ok
+  end,
   TestResult = try
     success_or_failure(apply(Mod, Fun, Args))
   catch

@@ -138,25 +138,51 @@ parse_file(File, Source, IncludePath) ->
       % replace name of the file `epp:parse_file()' actually read with the
       % name of source file, so any possible stack traces mention this source,
       % not a temporary file
-      NewForms = lists:map(
-        fun
-          ({attribute,N1,file,{_File,N2}}) -> {attribute,N1,file,{Source,N2}};
-          (Form) -> Form
-        end,
-        Forms
-      ),
-      case [M || {attribute, _, module, M} <- Forms] of
-        % in case of two `-module()' entries let the `compile:forms()' raise
-        % an error
-        [ModuleName | _] ->
-          {ok, {ModuleName, NewForms}};
-        [] ->
-          ModuleName = list_to_atom(filename:rootname(filename:basename(File))),
-          {ok, {ModuleName, [{attribute, 0, module, ModuleName} | NewForms]}}
-      end;
+      {ModuleName, FixedForms} = adjust_forms(Source, Forms),
+      {ok, {ModuleName, FixedForms}};
     {error, Reason} ->
       {error, Reason}
   end.
+
+%% @doc Adjust ABFs from the test file so they can be safely compiled to
+%%   a binary module.
+%%
+%%   Adjusting consists of setting source file to `SourceFile' (instead of
+%%   a temporary file it was read from), adding module declaration if it was
+%%   missing, and adding `test_dir' attribute to
+%%   `filename:dirname(SourceFile)' (necessary step for
+%%   {@link estap:test_dir/0} to work).
+
+-spec adjust_forms(file:name(), [erl_parse:abstract_form()]) ->
+  {module(), [erl_parse:abstract_form()]}.
+
+adjust_forms(SourceFile, Forms) ->
+  {BeforeModuleForms, AfterModuleForms} = lists:splitwith(
+    fun({attribute,_,module,_}) -> false; (_) -> true end,
+    Forms
+  ),
+  {ModuleName, FormsWithModuleAndDir} = case AfterModuleForms of
+    [{attribute, _, module, Module} = ModForm | Rest] ->
+      % add `test_dir' attribute just after the module declaration
+      DirAttr = {attribute, 0, test_dir, filename:dirname(SourceFile)},
+      {Module, BeforeModuleForms ++ [ModForm, DirAttr | Rest]};
+    [] ->
+      % add module declaration and `test_dir' attribute
+      Module = list_to_atom(filename:rootname(filename:basename(SourceFile))),
+      ModForm = {attribute, 0, module, Module},
+      DirAttr = {attribute, 0, test_dir, filename:dirname(SourceFile)},
+      {Module, [ModForm, DirAttr | BeforeModuleForms]}
+  end,
+  FormsWithProperSourcefile = lists:map(
+    fun
+      ({attribute, N1, file, {_File, N2}}) ->
+        {attribute, N1, file, {SourceFile, N2}};
+      (Form) ->
+        Form
+    end,
+    FormsWithModuleAndDir
+  ),
+  {ModuleName, FormsWithProperSourcefile}.
 
 %% }}}
 %%----------------------------------------------------------

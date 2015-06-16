@@ -223,17 +223,24 @@ all_ok() ->
 
 %% @doc Get a directory containing this test script.
 %%
-%% @TODO Implement this function.
+%%   <b>NOTE</b>: This function doesn't work in processes spawned from test
+%%   function. You need to get the directory in parent process and pass it as
+%%   an argument.
 
 test_dir() ->
-  'TODO'.
+  case get(test_dir) of
+    undefined -> erlang:error({undefined, test_dir});
+    Directory -> Directory
+  end.
 
 %% @doc Get a subdirectory of the directory containing this test script.
 %%
-%% @TODO Implement this function.
+%%   <b>NOTE</b>: This function doesn't work in processes spawned from test
+%%   function. You need to get the directory in parent process and pass it as
+%%   an argument.
 
-test_dir(_Subdir) ->
-  'TODO'.
+test_dir(Subdir) ->
+  filename:join(test_dir(), Subdir).
 
 %%%---------------------------------------------------------------------------
 
