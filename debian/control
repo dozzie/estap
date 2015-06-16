@@ -1,0 +1,21 @@
+Source: erlang-estap
+Maintainer: Stanislaw Klekot <dozzie@jarowit.net>
+Section: erlang
+Priority: optional
+Build-Depends: debhelper (>> 7.0.0), dh-rebar, erlang-base
+
+Package: erlang-estap
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, erlang-base
+Description: test framework for Erlang
+ estap is a simple test framework for Erlang, designed to be run under
+ `prove', Test::Harness or similar tools.
+
+Package: erlang-estap-doc
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: test framework for Erlang - API documentation
+ estap is a simple test framework for Erlang, designed to be run under
+ `prove', Test::Harness or similar tools.
+ .
+ This package contains API documentation generated from estap's sources.

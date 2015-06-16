@@ -1,0 +1,21 @@
+#!/usr/bin/make -f
+
+include /usr/share/dh-rebar/make/dh-rebar.Makefile
+
+%:
+	dh $@
+
+install-doc:
+	mkdir -p $(CURDIR)/debian/tmp/usr/share/doc/$(DEB_PKG)
+	cp -R doc $(CURDIR)/debian/tmp/usr/share/doc/$(DEB_PKG)/API
+	cp -R examples $(CURDIR)/debian/tmp/usr/share/doc/$(DEB_PKG)/example_tests
+
+override_dh_auto_install: install install-doc
+	install -D -m 755 bin/estap $(CURDIR)/debian/tmp/usr/bin/estap
+
+#override_dh_auto_build:
+#	rebar compile
+#	rebar doc
+
+override_dh_auto_test:
+	: skipped
