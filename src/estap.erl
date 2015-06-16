@@ -310,6 +310,9 @@ format_info({K, V} = _Info) ->
 
 %% @doc Format term so it can be printed to screen.
 %%   Convenience wrapper for {@link io_lib:format/2}.
+%%
+%% @see info/2
+%% @see diag/2
 
 -spec explain(term()) ->
   iolist().
