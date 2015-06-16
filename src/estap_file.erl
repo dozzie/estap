@@ -71,7 +71,7 @@ tempdir(TempDir) ->
 
 %% }}}
 %%----------------------------------------------------------
-%% loading test files {{{
+%% parsing test files {{{
 
 %% @doc Load estap file as ABF forms.
 
@@ -185,7 +185,7 @@ load_code(Forms) ->
     end,
     insert_exports(MissingTestExports, Forms)
   ),
-  case compile:forms(ToCompile) of
+  case compile:forms(ToCompile, [return_errors]) of
     {ok, Module, Binary} ->
       case code:load_binary(Module, "", Binary) of
         {module, Module} ->
@@ -212,8 +212,8 @@ load_code(Forms) ->
         {error, Reason} ->
           {error, Reason}
       end;
-    {error, Reason} ->
-      {error, Reason}
+    {error, Errors, _Warnings} ->
+      {error, {parse_errors, Errors}}
   end.
 
 %% @doc Insert specified exports in list of ABFs for the module.
