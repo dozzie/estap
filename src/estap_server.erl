@@ -11,6 +11,7 @@
 %% public interface
 -export([no_plan/0, plan/1, subplan/2, done/1]).
 -export([get_status/1]).
+-export([info/2, warning/2]).
 -export([running/2, report_result/2, report_result_todo/3, report_skipped/2]).
 
 %% supervision tree API
@@ -48,6 +49,9 @@
 %%%---------------------------------------------------------------------------
 %%% public interface
 %%%---------------------------------------------------------------------------
+
+%%----------------------------------------------------------
+%% test plan setup {{{
 
 %% @doc "No plan" plan.
 
@@ -94,6 +98,10 @@ done(TestRunId) ->
 
 get_status(TestRunId) ->
   gen_server:call(TestRunId, status).
+
+%% }}}
+%%----------------------------------------------------------
+%% test plan execution {{{
 
 %% @doc Mark the beginning of new test.
 
@@ -146,6 +154,30 @@ report_result_todo(TestRunId, Why, {died, Reason} = _TestResult) ->
 
 report_skipped(TestRunId, Why) ->
   gen_server:call(TestRunId, {skipped, Why}).
+
+%% }}}
+%%----------------------------------------------------------
+%% printing messages {{{
+
+%% @doc Print a regular message to test output.
+
+-spec info(test_run_id(), iolist()) ->
+  ok.
+
+info(TestRunId, Message) ->
+  gen_server:call(TestRunId, {info, Message}).
+
+%% @doc Print a diagnostic message (warning) to output, typically
+%%   <i>STDERR</i>.
+
+-spec warning(test_run_id(), iolist()) ->
+  ok.
+
+warning(TestRunId, Message) ->
+  gen_server:call(TestRunId, {warning, Message}).
+
+%% }}}
+%%----------------------------------------------------------
 
 %%%---------------------------------------------------------------------------
 %%% supervision tree API
@@ -268,6 +300,14 @@ handle_call(status = _Request, _From, State = #state{counters = Counters}) ->
   TODO = Counters#counters.todo_failures,
   {reply, {Planned, Total, Failed, TODO}, State};
 
+handle_call({info, Message} = _Request, _From, State) ->
+  print_info("~s", [Message], State),
+  {reply, ok, State};
+
+handle_call({warning, Message} = _Request, _From, State) ->
+  print_warning("~s", [Message], State),
+  {reply, ok, State};
+
 %% unknown calls
 handle_call(_Request, _From, State) ->
   {reply, {error, unknown_call}, State}.
@@ -299,6 +339,11 @@ code_change(_OldVsn, State, _Extra) ->
 %% }}}
 %%----------------------------------------------------------
 
+%%----------------------------------------------------------
+%% helper functions
+%%----------------------------------------------------------
+%% printing messages {{{
+
 %% @doc Format term for printing to screen.
 
 -spec format(term()) ->
@@ -308,7 +353,7 @@ format(Term) ->
   % no term should weigh 1MB
   io_lib:print(Term, 1, 1024 * 1024, -1).
 
-%% @doc Print message to screen.
+%% @doc Print text to screen.
 %%   The message doesn't need to end with NL character.
 
 -spec print(string(), [term()], #state{}) ->
@@ -316,12 +361,40 @@ format(Term) ->
 
 print(Format, Args, _State = #state{level = Level}) ->
   Indent = ["    " || _ <- lists:seq(1, Level)],
-  Text = iolist_to_binary(io_lib:format(Format, Args)),
-  Lines = binary:split(Text, <<"\n">>, [global, trim]),
-  [io:put_chars([Indent, L, "\n"]) || L <- Lines],
+  print(standard_io, Indent, Format, Args).
+
+%% @doc Print informational message to screen.
+
+-spec print_info(string(), [term()], #state{}) ->
   ok.
 
+print_info(Format, Args, _State = #state{level = Level}) ->
+  Indent = ["    # " || _ <- lists:seq(1, Level)],
+  print(standard_io, Indent, Format, Args).
+
+%% @doc Print diagnostic (warning) message to screen.
+
+-spec print_warning(string(), [term()], #state{}) ->
+  ok.
+
+print_warning(Format, Args, _State = #state{level = Level}) ->
+  Indent = ["    # " || _ <- lists:seq(1, Level)],
+  print(standard_error, Indent, Format, Args).
+
+%% @doc Print message to specified IO device, each line indented.
+
+-spec print(io:device(), iolist(), string(), [term()]) ->
+  ok.
+
+print(Output, Indent, Format, Args) ->
+  Text = iolist_to_binary(io_lib:format(Format, Args)),
+  Lines = binary:split(Text, <<"\n">>, [global, trim]),
+  [io:put_chars(Output, [Indent, L, "\n"]) || L <- Lines],
+  ok.
+
+%% }}}
 %%----------------------------------------------------------
+%% `#counter{}' handling {{{
 
 %% @doc Add 1 to skipped tests counter.
 
@@ -365,6 +438,7 @@ add_todo({died, _} = _Result,
          Counters = #counters{tests = T, todo_failures = N}) ->
   _NewCounters = Counters#counters{tests = T + 1, todo_failures = N + 1}.
 
+%% }}}
 %%----------------------------------------------------------
 
 %%%---------------------------------------------------------------------------

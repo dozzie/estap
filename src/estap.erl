@@ -18,7 +18,7 @@
 %% public interface
 -export([ok/2, is/3, isnt/3, eq/3, ne/3, cmp/4, like/3, unlike/3, matches/3]).
 -export([bail_out/1, no_plan/0, plan/1, all_ok/0]).
--export([diag/1, diag/2, note/1, note/2, explain/1]).
+-export([diag/1, diag/2, info/1, info/2, explain/1]).
 -export([test_dir/0, test_dir/1]).
 
 -export_type([value/0, cmp/0, regexp/0, match_fun/0]).
@@ -38,7 +38,8 @@
 
 -type description() :: iolist().
 
--type info() :: term(). % TODO: more detailed definition
+-type info() :: atom() | iolist() |
+                {FieldName :: atom() | iolist(), Value :: atom() | iolist()}.
 
 %%% }}}
 %%%---------------------------------------------------------------------------
@@ -236,58 +237,79 @@ test_dir(_Subdir) ->
 
 %%%---------------------------------------------------------------------------
 
-%% @doc Print a warning.
+%% @doc Print a diagnostic message.
+%%   Typically, diagnostic message is a warning, but may be notice important
+%%   enough to print it along with test progress by TAP consumer.
 %%
-%% @TODO Implement this function.
+%%   Normally diagnostic output goes to <i>STDERR</i>, but under TODO tests it
+%%   goes to <i>STDOUT</i>.
+%%
+%% @TODO Make the diagnostic output go to <i>STDOUT</i> under TODO
 
 -spec diag(message()) ->
-  'TODO'.
+  ok.
 
-diag(_Message) ->
-  'TODO'.
+diag(Message) ->
+  TestRun = get_test_run(),
+  estap_server:warning(TestRun, Message).
 
 %% @doc Print a warning with some context.
+%%   Typically, diagnostic message is a warning, but may be notice important
+%%   enough to print it along with test progress by TAP consumer.
 %%
-%% @TODO Implement this function.
+%%   Normally diagnostic output goes to <i>STDERR</i>, but under TODO tests it
+%%   goes to <i>STDOUT</i>.
+%%
+%% @TODO Make the diagnostic output go to <i>STDOUT</i> under TODO
 
 -spec diag(message(), [info()]) ->
-  'TODO'.
+  ok.
 
-diag(_Message, _Info) ->
-  'TODO'.
+diag(Message, Info) ->
+  TestRun = get_test_run(),
+  InfoLines = [["  ", format_info(I), "\n"] || I <- Info],
+  estap_server:warning(TestRun, [Message, "\n", InfoLines]).
 
 %% @doc Print a message.
-%%
-%% @TODO Implement this function.
 
--spec note(message()) ->
-  'TODO'.
+-spec info(message()) ->
+  ok.
 
-note(_Message) ->
-  'TODO'.
+info(Message) ->
+  TestRun = get_test_run(),
+  estap_server:info(TestRun, Message).
 
 %% @doc Print a message with some context.
-%%
-%% @TODO Implement this function.
 
--spec note(message(), [info()]) ->
-  'TODO'.
+-spec info(message(), [info()]) ->
+  ok.
 
-note(_Message, _Info) ->
-  'TODO'.
+info(Message, Info) ->
+  TestRun = get_test_run(),
+  InfoLines = [["  ", format_info(I), "\n"] || I <- Info],
+  estap_server:info(TestRun, [Message, "\n", InfoLines]).
+
+%% @doc Format a single info entry for printing it on screen.
+
+-spec format_info(info()) ->
+  iolist().
+
+format_info(Info) when is_list(Info); is_binary(Info) ->
+  iolist_to_binary(Info);
+format_info(Info) when is_atom(Info) ->
+  atom_to_binary(Info, unicode);
+format_info({K, V} = _Info) ->
+  [format_info(K), ": ", format_info(V)].
 
 %% @doc Format term so it can be printed to screen.
 %%   Convenience wrapper for {@link io_lib:format/2}.
-%% @spec explain(term()) ->
-%%   iolist()
-%%
-%% @TODO Implement this function.
 
 -spec explain(term()) ->
-  'TODO'.
+  iolist().
 
-explain(_Term) ->
-  'TODO'.
+explain(Term) ->
+  % no term should weigh 1MB
+  io_lib:print(Term, 1, 1024 * 1024, -1).
 
 %%%---------------------------------------------------------------------------
 
