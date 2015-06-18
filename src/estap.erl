@@ -10,6 +10,11 @@
 %%%
 %%%   Any other returned value is also considered a failure, but a dubious
 %%%   one. Stick to saying explicitly that the test failed.
+%%%
+%%%   All test functions return the value they were passed (an exception to
+%%%   this rule are {@link pass/1} and {@link fail/1} functions, for obvious
+%%%   reason). This allows test to be added around preparation function call
+%%%   for more complex test cases.
 %%% @end
 %%%---------------------------------------------------------------------------
 
@@ -50,17 +55,18 @@
 %% @doc Check if `Value' is any of the recognized truth values.
 
 -spec ok(value(), description()) ->
-  ok.
+  Value :: value().
 
 ok(Value, Description) ->
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
-  estap_server:report_result(TestRun, estap_test:success_or_failure(Value)).
+  estap_server:report_result(TestRun, estap_test:success_or_failure(Value)),
+  Value.
 
 %% @doc Mark the test as a success unconditionally.
 
 -spec pass(description()) ->
-  ok.
+  true.
 
 pass(Description) ->
   ok(true, Description).
@@ -68,7 +74,7 @@ pass(Description) ->
 %% @doc Mark the test as a failure unconditionally.
 
 -spec fail(description()) ->
-  ok.
+  false.
 
 fail(Description) ->
   ok(false, Description).
@@ -76,29 +82,31 @@ fail(Description) ->
 %% @doc Check if `Value' is the same as `Expected'.
 
 -spec is(value(), value(), description()) ->
-  ok.
+  Value :: value().
 
 is(Value, Expected, Description) ->
   case Value of
     Expected -> pass(Description);
     _ -> fail(Description)
-  end.
+  end,
+  Value.
 
 %% @doc Check if `Value' is different than `Expected'.
 
 -spec isnt(value(), value(), description()) ->
-  ok.
+  Value :: value().
 
 isnt(Value, Expected, Description) ->
   case Value of
     Expected -> fail(Description);
     _ -> pass(Description)
-  end.
+  end,
+  Value.
 
 %% @doc Check if `Value' is equal (`==') to `Expected'.
 
 -spec eq(value(), value(), description()) ->
-  ok.
+  Value :: value().
 
 eq(Value, Expected, Description) ->
   cmp(Value, '==', Expected, Description).
@@ -106,7 +114,7 @@ eq(Value, Expected, Description) ->
 %% @doc Check if `Value' is not equal (`/=') to `Expected'.
 
 -spec ne(value(), value(), description()) ->
-  ok.
+  Value :: value().
 
 ne(Value, Expected, Description) ->
   cmp(Value, '/=', Expected, Description).
@@ -114,7 +122,7 @@ ne(Value, Expected, Description) ->
 %% @doc Compare `Value' and `Expected' using comparison operator.
 
 -spec cmp(value(), cmp(), value(), description()) ->
-  ok.
+  Value :: value().
 
 cmp(Value, Cmp, Expected, Description) ->
   CmpResult = case Cmp of
@@ -127,12 +135,13 @@ cmp(Value, Cmp, Expected, Description) ->
     '=='  -> Value ==  Expected;
     '=:=' -> Value =:= Expected
   end,
-  ok(CmpResult, Description).
+  ok(CmpResult, Description),
+  Value.
 
 %% @doc Check if `Value' matches a regexp.
 
 -spec like(value(), regexp(), description()) ->
-  ok.
+  Value :: value().
 
 like(Value, Expected, Description) ->
   % XXX: regular expression may be invalid, so prepare estap_server before
@@ -142,12 +151,13 @@ like(Value, Expected, Description) ->
   case re:run(Value, Expected) of
     {match, _Capture} -> estap_server:report_result(TestRun, {success, true});
     nomatch           -> estap_server:report_result(TestRun, {failure, false})
-  end.
+  end,
+  Value.
 
 %% @doc Check if `Value' not matches a regexp.
 
 -spec unlike(value(), regexp(), description()) ->
-  ok.
+  Value :: value().
 
 unlike(Value, Expected, Description) ->
   % XXX: regular expression may be invalid, so prepare estap_server before
@@ -157,7 +167,8 @@ unlike(Value, Expected, Description) ->
   case re:run(Value, Expected) of
     {match, _Capture} -> estap_server:report_result(TestRun, {failure, false});
     nomatch           -> estap_server:report_result(TestRun, {success, true})
-  end.
+  end,
+  Value.
 
 %% @doc Check if `Value' pattern-matches.
 %%   Pattern is specified as a fun that has clauses defined only for what
@@ -165,7 +176,7 @@ unlike(Value, Expected, Description) ->
 %%   error. Return value of the fun is ignored.
 
 -spec matches(value(), match_fun(), description()) ->
-  ok.
+  Value :: value().
 
 matches(Value, MatchSpec, Description) ->
   TestRun = get_test_run(),
@@ -176,7 +187,8 @@ matches(Value, MatchSpec, Description) ->
   catch
     error:function_clause ->
       estap_server:report_result(TestRun, {failure, false})
-  end.
+  end,
+  Value.
 
 %%%---------------------------------------------------------------------------
 
