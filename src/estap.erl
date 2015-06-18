@@ -16,7 +16,8 @@
 -module(estap).
 
 %% public interface
--export([ok/2, is/3, isnt/3, eq/3, ne/3, cmp/4, like/3, unlike/3, matches/3]).
+-export([ok/2, pass/1, fail/1, is/3, isnt/3, eq/3, ne/3, cmp/4]).
+-export([like/3, unlike/3, matches/3]).
 -export([bail_out/1, no_plan/0, plan/1, all_ok/0]).
 -export([diag/1, diag/2, info/1, info/2, explain/1]).
 -export([test_dir/0, test_dir/1]).
@@ -56,19 +57,31 @@ ok(Value, Description) ->
   estap_server:running(TestRun, Description),
   estap_server:report_result(TestRun, estap_test:success_or_failure(Value)).
 
+%% @doc Mark the test as a success unconditionally.
+
+-spec pass(description()) ->
+  ok.
+
+pass(Description) ->
+  ok(true, Description).
+
+%% @doc Mark the test as a failure unconditionally.
+
+-spec fail(description()) ->
+  ok.
+
+fail(Description) ->
+  ok(false, Description).
+
 %% @doc Check if `Value' is the same as `Expected'.
 
 -spec is(value(), value(), description()) ->
   ok.
 
 is(Value, Expected, Description) ->
-  TestRun = get_test_run(),
-  estap_server:running(TestRun, Description),
   case Value of
-    Expected ->
-      estap_server:report_result(TestRun, {success, true});
-    _ ->
-      estap_server:report_result(TestRun, {failure, false})
+    Expected -> pass(Description);
+    _ -> fail(Description)
   end.
 
 %% @doc Check if `Value' is different than `Expected'.
@@ -77,13 +90,9 @@ is(Value, Expected, Description) ->
   ok.
 
 isnt(Value, Expected, Description) ->
-  TestRun = get_test_run(),
-  estap_server:running(TestRun, Description),
   case Value of
-    Expected ->
-      estap_server:report_result(TestRun, {failure, false});
-    _ ->
-      estap_server:report_result(TestRun, {success, true})
+    Expected -> fail(Description);
+    _ -> pass(Description)
   end.
 
 %% @doc Check if `Value' is equal (`==') to `Expected'.
@@ -92,7 +101,6 @@ isnt(Value, Expected, Description) ->
   ok.
 
 eq(Value, Expected, Description) ->
-  % XXX: no `get_test_run()' call
   cmp(Value, '==', Expected, Description).
 
 %% @doc Check if `Value' is not equal (`/=') to `Expected'.
@@ -101,7 +109,6 @@ eq(Value, Expected, Description) ->
   ok.
 
 ne(Value, Expected, Description) ->
-  % XXX: no `get_test_run()' call
   cmp(Value, '/=', Expected, Description).
 
 %% @doc Compare `Value' and `Expected' using comparison operator.
@@ -110,8 +117,6 @@ ne(Value, Expected, Description) ->
   ok.
 
 cmp(Value, Cmp, Expected, Description) ->
-  TestRun = get_test_run(),
-  estap_server:running(TestRun, Description),
   CmpResult = case Cmp of
     '<'   -> Value <   Expected;
     '>'   -> Value >   Expected;
@@ -122,10 +127,7 @@ cmp(Value, Cmp, Expected, Description) ->
     '=='  -> Value ==  Expected;
     '=:=' -> Value =:= Expected
   end,
-  case CmpResult of
-    true  -> estap_server:report_result(TestRun, {success, true});
-    false -> estap_server:report_result(TestRun, {failure, false})
-  end.
+  ok(CmpResult, Description).
 
 %% @doc Check if `Value' matches a regexp.
 
@@ -133,6 +135,8 @@ cmp(Value, Cmp, Expected, Description) ->
   ok.
 
 like(Value, Expected, Description) ->
+  % XXX: regular expression may be invalid, so prepare estap_server before
+  % running the regexp
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
   case re:run(Value, Expected) of
@@ -146,6 +150,8 @@ like(Value, Expected, Description) ->
   ok.
 
 unlike(Value, Expected, Description) ->
+  % XXX: regular expression may be invalid, so prepare estap_server before
+  % running the regexp
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
   case re:run(Value, Expected) of
