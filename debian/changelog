@@ -1,3 +1,11 @@
+erlang-estap (0.2.0-1) stable; urgency=low
+
+  * Top-level test diagnostic messages
+  * Few new test functions
+  * Implemented bailing tests out
+
+ -- Stanislaw Klekot <dozzie@jarowit.net>  Thu, 18 Jun 2015 20:06:00 +0200
+
 erlang-estap (0.1.0-1) stable; urgency=low
 
   * Initial release.
