@@ -369,7 +369,10 @@ print(Format, Args, _State = #state{level = Level}) ->
   ok.
 
 print_info(Format, Args, _State = #state{level = Level}) ->
-  Indent = ["    # " || _ <- lists:seq(1, Level)],
+  Indent = case Level > 0 of
+    true -> ["    # " || _ <- lists:seq(1, Level)];
+    false -> "# "
+  end,
   print(standard_io, Indent, Format, Args).
 
 %% @doc Print diagnostic (warning) message to screen.
@@ -378,7 +381,10 @@ print_info(Format, Args, _State = #state{level = Level}) ->
   ok.
 
 print_warning(Format, Args, _State = #state{level = Level}) ->
-  Indent = ["    # " || _ <- lists:seq(1, Level)],
+  Indent = case Level > 0 of
+    true -> ["    # " || _ <- lists:seq(1, Level)];
+    false -> "# "
+  end,
   print(standard_error, Indent, Format, Args).
 
 %% @doc Print message to specified IO device, each line indented.

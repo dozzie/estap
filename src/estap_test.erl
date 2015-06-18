@@ -11,7 +11,7 @@
 -export([success_or_failure/1]).
 
 %% private interface
--export([call/4]).
+-export([call/5]).
 
 -export_type([test/0, test_plan/0]).
 
@@ -56,10 +56,10 @@ run_tests(TestRun, [{TestFunSpec, Description, Status} | Rest] = _Tests) ->
   estap_server:running(TestRun, Description),
   case Status of
     run ->
-      Result = test(TestFunSpec),
+      Result = test(TestRun, TestFunSpec),
       estap_server:report_result(TestRun, Result);
     {todo, Why} ->
-      Result = test(TestFunSpec),
+      Result = test(TestRun, TestFunSpec),
       estap_server:report_result_todo(TestRun, Why, Result);
     {skip, Why} ->
       estap_server:report_skipped(TestRun, Why)
@@ -68,17 +68,18 @@ run_tests(TestRun, [{TestFunSpec, Description, Status} | Rest] = _Tests) ->
 
 %% @doc Run a single test function, according to its specification.
 
--spec test({Module :: module(), Function :: atom()}) ->
+-spec test(estap_server:test_run_id(),
+           {Module :: module(), Function :: atom()}) ->
     {success, term()}
   | {failure, term()}
   | {dubious, term()}
   | {died, term()}.
 
-test({Mod, Func} = _TestFunSpec) ->
+test(TestRun, {Mod, Func} = _TestFunSpec) ->
   Args = [],
   ResultRef = make_ref(),
   ResultTo = {self(), ResultRef},
-  {Pid, MonRef} = spawn_monitor(?MODULE, call, [ResultTo, Mod, Func, Args]),
+  {Pid, MonRef} = spawn_monitor(?MODULE, call, [ResultTo, TestRun, Mod, Func, Args]),
   receive
     {result, ResultRef, TestResult} ->
       erlang:demonitor(MonRef, [flush]),
@@ -91,10 +92,13 @@ test({Mod, Func} = _TestFunSpec) ->
 %% @doc Run the specified function, collect its result (possibly thrown) and
 %%   report it back to `ResultTo'.
 
--spec call({pid(), term()}, module(), atom(), [term()]) ->
+-spec call({pid(), term()}, estap_server:test_run_id(),
+           module(), atom(), [term()]) ->
   ok.
 
-call({Pid, Ref} = _ResultTo, Mod, Fun, Args) ->
+call({Pid, Ref} = _ResultTo, TestRun, Mod, Fun, Args) ->
+  % XXX: for `estap:info()' and `estap:diag()' to work with no sub-tests
+  put(estap_server_parent, TestRun),
   % XXX: putting `test_dir' to proc dict is an important thing for
   % `estap:test_dir()' function
   ModuleAttrs = Mod:module_info(attributes),

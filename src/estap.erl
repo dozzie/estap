@@ -248,6 +248,10 @@ test_dir(Subdir) ->
 %%   Typically, diagnostic message is a warning, but may be notice important
 %%   enough to print it along with test progress by TAP consumer.
 %%
+%%   Before first call to {@link plan/1}, {@link no_plan/0} or test functions
+%%   ({@link ok/2}, {@link is/3} etc.) message is printed at the level of
+%%   parent test. After any of those, it's printed at sub-test level.
+%%
 %%   Normally diagnostic output goes to <i>STDERR</i>, but under TODO tests it
 %%   goes to <i>STDOUT</i>.
 %%
@@ -257,12 +261,16 @@ test_dir(Subdir) ->
   ok.
 
 diag(Message) ->
-  TestRun = get_test_run(),
+  TestRun = get_test_run_or_parent(),
   estap_server:warning(TestRun, Message).
 
 %% @doc Print a warning with some context.
 %%   Typically, diagnostic message is a warning, but may be notice important
 %%   enough to print it along with test progress by TAP consumer.
+%%
+%%   Before first call to {@link plan/1}, {@link no_plan/0} or test functions
+%%   ({@link ok/2}, {@link is/3} etc.) message is printed at the level of
+%%   parent test. After any of those, it's printed at sub-test level.
 %%
 %%   Normally diagnostic output goes to <i>STDERR</i>, but under TODO tests it
 %%   goes to <i>STDOUT</i>.
@@ -273,26 +281,34 @@ diag(Message) ->
   ok.
 
 diag(Message, Info) ->
-  TestRun = get_test_run(),
+  TestRun = get_test_run_or_parent(),
   InfoLines = [["  ", format_info(I), "\n"] || I <- Info],
   estap_server:warning(TestRun, [Message, "\n", InfoLines]).
 
 %% @doc Print a message.
+%%
+%%   Before first call to {@link plan/1}, {@link no_plan/0} or test functions
+%%   ({@link ok/2}, {@link is/3} etc.) message is printed at the level of
+%%   parent test. After any of those, it's printed at sub-test level.
 
 -spec info(message()) ->
   ok.
 
 info(Message) ->
-  TestRun = get_test_run(),
+  TestRun = get_test_run_or_parent(),
   estap_server:info(TestRun, Message).
 
 %% @doc Print a message with some context.
+%%
+%%   Before first call to {@link plan/1}, {@link no_plan/0} or test functions
+%%   ({@link ok/2}, {@link is/3} etc.) message is printed at the level of
+%%   parent test. After any of those, it's printed at sub-test level.
 
 -spec info(message(), [info()]) ->
   ok.
 
 info(Message, Info) ->
-  TestRun = get_test_run(),
+  TestRun = get_test_run_or_parent(),
   InfoLines = [["  ", format_info(I), "\n"] || I <- Info],
   estap_server:info(TestRun, [Message, "\n", InfoLines]).
 
@@ -336,6 +352,18 @@ get_test_run() ->
       TestRun = estap_server:subplan(no_plan, 1),
       put(estap_server, TestRun),
       TestRun;
+    TestRun when is_pid(TestRun) ->
+      TestRun
+  end.
+
+%% @doc Get associated {@link estap_server} or parent one if none is started
+%%   yet. Necessary for top-level {@link info/1} and {@link diag/1} to work.
+
+get_test_run_or_parent() ->
+  case get(estap_server) of
+    undefined ->
+      % XXX: this must be set in `estap_test:run()'
+      get(estap_server_parent);
     TestRun when is_pid(TestRun) ->
       TestRun
   end.
