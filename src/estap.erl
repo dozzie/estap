@@ -10,13 +10,19 @@
 %%%
 %%%   Any other returned value is also considered a failure, but a dubious
 %%%   one. Stick to saying explicitly that the test failed.
+%%%
+%%%   All test functions return the value they were passed (an exception to
+%%%   this rule are {@link pass/1} and {@link fail/1} functions, for obvious
+%%%   reason). This allows test to be added around preparation function call
+%%%   for more complex test cases.
 %%% @end
 %%%---------------------------------------------------------------------------
 
 -module(estap).
 
 %% public interface
--export([ok/2, is/3, isnt/3, eq/3, ne/3, cmp/4, like/3, unlike/3, matches/3]).
+-export([ok/2, pass/1, fail/1, is/3, isnt/3, eq/3, ne/3, cmp/4]).
+-export([like/3, unlike/3, matches/3]).
 -export([bail_out/1, no_plan/0, plan/1, all_ok/0]).
 -export([diag/1, diag/2, info/1, info/2, explain/1]).
 -export([test_dir/0, test_dir/1]).
@@ -49,69 +55,76 @@
 %% @doc Check if `Value' is any of the recognized truth values.
 
 -spec ok(value(), description()) ->
-  ok.
+  Value :: value().
 
 ok(Value, Description) ->
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
-  estap_server:report_result(TestRun, estap_test:success_or_failure(Value)).
+  estap_server:report_result(TestRun, estap_test:success_or_failure(Value)),
+  Value.
+
+%% @doc Mark the test as a success unconditionally.
+
+-spec pass(description()) ->
+  true.
+
+pass(Description) ->
+  ok(true, Description).
+
+%% @doc Mark the test as a failure unconditionally.
+
+-spec fail(description()) ->
+  false.
+
+fail(Description) ->
+  ok(false, Description).
 
 %% @doc Check if `Value' is the same as `Expected'.
 
 -spec is(value(), value(), description()) ->
-  ok.
+  Value :: value().
 
 is(Value, Expected, Description) ->
-  TestRun = get_test_run(),
-  estap_server:running(TestRun, Description),
   case Value of
-    Expected ->
-      estap_server:report_result(TestRun, {success, true});
-    _ ->
-      estap_server:report_result(TestRun, {failure, false})
-  end.
+    Expected -> pass(Description);
+    _ -> fail(Description)
+  end,
+  Value.
 
 %% @doc Check if `Value' is different than `Expected'.
 
 -spec isnt(value(), value(), description()) ->
-  ok.
+  Value :: value().
 
 isnt(Value, Expected, Description) ->
-  TestRun = get_test_run(),
-  estap_server:running(TestRun, Description),
   case Value of
-    Expected ->
-      estap_server:report_result(TestRun, {failure, false});
-    _ ->
-      estap_server:report_result(TestRun, {success, true})
-  end.
+    Expected -> fail(Description);
+    _ -> pass(Description)
+  end,
+  Value.
 
 %% @doc Check if `Value' is equal (`==') to `Expected'.
 
 -spec eq(value(), value(), description()) ->
-  ok.
+  Value :: value().
 
 eq(Value, Expected, Description) ->
-  % XXX: no `get_test_run()' call
   cmp(Value, '==', Expected, Description).
 
 %% @doc Check if `Value' is not equal (`/=') to `Expected'.
 
 -spec ne(value(), value(), description()) ->
-  ok.
+  Value :: value().
 
 ne(Value, Expected, Description) ->
-  % XXX: no `get_test_run()' call
   cmp(Value, '/=', Expected, Description).
 
 %% @doc Compare `Value' and `Expected' using comparison operator.
 
 -spec cmp(value(), cmp(), value(), description()) ->
-  ok.
+  Value :: value().
 
 cmp(Value, Cmp, Expected, Description) ->
-  TestRun = get_test_run(),
-  estap_server:running(TestRun, Description),
   CmpResult = case Cmp of
     '<'   -> Value <   Expected;
     '>'   -> Value >   Expected;
@@ -122,36 +135,40 @@ cmp(Value, Cmp, Expected, Description) ->
     '=='  -> Value ==  Expected;
     '=:=' -> Value =:= Expected
   end,
-  case CmpResult of
-    true  -> estap_server:report_result(TestRun, {success, true});
-    false -> estap_server:report_result(TestRun, {failure, false})
-  end.
+  ok(CmpResult, Description),
+  Value.
 
 %% @doc Check if `Value' matches a regexp.
 
 -spec like(value(), regexp(), description()) ->
-  ok.
+  Value :: value().
 
 like(Value, Expected, Description) ->
+  % XXX: regular expression may be invalid, so prepare estap_server before
+  % running the regexp
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
   case re:run(Value, Expected) of
     {match, _Capture} -> estap_server:report_result(TestRun, {success, true});
     nomatch           -> estap_server:report_result(TestRun, {failure, false})
-  end.
+  end,
+  Value.
 
 %% @doc Check if `Value' not matches a regexp.
 
 -spec unlike(value(), regexp(), description()) ->
-  ok.
+  Value :: value().
 
 unlike(Value, Expected, Description) ->
+  % XXX: regular expression may be invalid, so prepare estap_server before
+  % running the regexp
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
   case re:run(Value, Expected) of
     {match, _Capture} -> estap_server:report_result(TestRun, {failure, false});
     nomatch           -> estap_server:report_result(TestRun, {success, true})
-  end.
+  end,
+  Value.
 
 %% @doc Check if `Value' pattern-matches.
 %%   Pattern is specified as a fun that has clauses defined only for what
@@ -159,7 +176,7 @@ unlike(Value, Expected, Description) ->
 %%   error. Return value of the fun is ignored.
 
 -spec matches(value(), match_fun(), description()) ->
-  ok.
+  Value :: value().
 
 matches(Value, MatchSpec, Description) ->
   TestRun = get_test_run(),
@@ -170,19 +187,25 @@ matches(Value, MatchSpec, Description) ->
   catch
     error:function_clause ->
       estap_server:report_result(TestRun, {failure, false})
-  end.
+  end,
+  Value.
 
 %%%---------------------------------------------------------------------------
 
-%% @doc Stop testing current suite because something terrible happened.
+%% @doc Stop testing whatsoever because something terrible happened.
 %%
-%% @TODO Implement this function.
+%%   Note that bailing out is a very severe operation. It aborts all test
+%%   cases, including the ones in other scripts that were not executed yet.
+%%   It should be only used when an error that occurred renders whole test
+%%   suite unusable before it's fixed.
 
 -spec bail_out(message()) ->
   no_return().
 
-bail_out(_Message) ->
-  'TODO'.
+bail_out(Message) ->
+  TestRun = get_test_run_or_parent(),
+  estap_server:bail_out(TestRun, Message),
+  exit('BAIL_OUT').
 
 %% @doc Set the "no plan" plan for sub-tests.
 %%   Calling this function may be safely skipped.
@@ -248,6 +271,10 @@ test_dir(Subdir) ->
 %%   Typically, diagnostic message is a warning, but may be notice important
 %%   enough to print it along with test progress by TAP consumer.
 %%
+%%   Before first call to {@link plan/1}, {@link no_plan/0} or test functions
+%%   ({@link ok/2}, {@link is/3} etc.) message is printed at the level of
+%%   parent test. After any of those, it's printed at sub-test level.
+%%
 %%   Normally diagnostic output goes to <i>STDERR</i>, but under TODO tests it
 %%   goes to <i>STDOUT</i>.
 %%
@@ -257,12 +284,16 @@ test_dir(Subdir) ->
   ok.
 
 diag(Message) ->
-  TestRun = get_test_run(),
+  TestRun = get_test_run_or_parent(),
   estap_server:warning(TestRun, Message).
 
 %% @doc Print a warning with some context.
 %%   Typically, diagnostic message is a warning, but may be notice important
 %%   enough to print it along with test progress by TAP consumer.
+%%
+%%   Before first call to {@link plan/1}, {@link no_plan/0} or test functions
+%%   ({@link ok/2}, {@link is/3} etc.) message is printed at the level of
+%%   parent test. After any of those, it's printed at sub-test level.
 %%
 %%   Normally diagnostic output goes to <i>STDERR</i>, but under TODO tests it
 %%   goes to <i>STDOUT</i>.
@@ -273,40 +304,48 @@ diag(Message) ->
   ok.
 
 diag(Message, Info) ->
-  TestRun = get_test_run(),
+  TestRun = get_test_run_or_parent(),
   InfoLines = [["  ", format_info(I), "\n"] || I <- Info],
   estap_server:warning(TestRun, [Message, "\n", InfoLines]).
 
 %% @doc Print a message.
+%%
+%%   Before first call to {@link plan/1}, {@link no_plan/0} or test functions
+%%   ({@link ok/2}, {@link is/3} etc.) message is printed at the level of
+%%   parent test. After any of those, it's printed at sub-test level.
 
 -spec info(message()) ->
   ok.
 
 info(Message) ->
-  TestRun = get_test_run(),
+  TestRun = get_test_run_or_parent(),
   estap_server:info(TestRun, Message).
 
 %% @doc Print a message with some context.
+%%
+%%   Before first call to {@link plan/1}, {@link no_plan/0} or test functions
+%%   ({@link ok/2}, {@link is/3} etc.) message is printed at the level of
+%%   parent test. After any of those, it's printed at sub-test level.
 
 -spec info(message(), [info()]) ->
   ok.
 
 info(Message, Info) ->
-  TestRun = get_test_run(),
+  TestRun = get_test_run_or_parent(),
   InfoLines = [["  ", format_info(I), "\n"] || I <- Info],
   estap_server:info(TestRun, [Message, "\n", InfoLines]).
 
 %% @doc Format a single info entry for printing it on screen.
 
 -spec format_info(info()) ->
-  iolist().
+  binary().
 
 format_info(Info) when is_list(Info); is_binary(Info) ->
   iolist_to_binary(Info);
 format_info(Info) when is_atom(Info) ->
   atom_to_binary(Info, unicode);
 format_info({K, V} = _Info) ->
-  [format_info(K), ": ", format_info(V)].
+  <<(format_info(K))/binary, ": ", (format_info(V))/binary>>.
 
 %% @doc Format term so it can be printed to screen.
 %%   Convenience wrapper for {@link io_lib:format/2}.
@@ -336,6 +375,18 @@ get_test_run() ->
       TestRun = estap_server:subplan(no_plan, 1),
       put(estap_server, TestRun),
       TestRun;
+    TestRun when is_pid(TestRun) ->
+      TestRun
+  end.
+
+%% @doc Get associated {@link estap_server} or parent one if none is started
+%%   yet. Necessary for top-level {@link info/1} and {@link diag/1} to work.
+
+get_test_run_or_parent() ->
+  case get(estap_server) of
+    undefined ->
+      % XXX: this must be set in `estap_test:run()'
+      get(estap_server_parent);
     TestRun when is_pid(TestRun) ->
       TestRun
   end.
