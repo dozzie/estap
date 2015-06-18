@@ -321,14 +321,14 @@ info(Message, Info) ->
 %% @doc Format a single info entry for printing it on screen.
 
 -spec format_info(info()) ->
-  iolist().
+  binary().
 
 format_info(Info) when is_list(Info); is_binary(Info) ->
   iolist_to_binary(Info);
 format_info(Info) when is_atom(Info) ->
   atom_to_binary(Info, unicode);
 format_info({K, V} = _Info) ->
-  [format_info(K), ": ", format_info(V)].
+  <<(format_info(K))/binary, ": ", (format_info(V))/binary>>.
 
 %% @doc Format term so it can be printed to screen.
 %%   Convenience wrapper for {@link io_lib:format/2}.
