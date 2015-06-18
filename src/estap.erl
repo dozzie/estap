@@ -192,15 +192,20 @@ matches(Value, MatchSpec, Description) ->
 
 %%%---------------------------------------------------------------------------
 
-%% @doc Stop testing current suite because something terrible happened.
+%% @doc Stop testing whatsoever because something terrible happened.
 %%
-%% @TODO Implement this function.
+%%   Note that bailing out is a very severe operation. It aborts all test
+%%   cases, including the ones in other scripts that were not executed yet.
+%%   It should be only used when an error that occurred renders whole test
+%%   suite unusable before it's fixed.
 
 -spec bail_out(message()) ->
   no_return().
 
-bail_out(_Message) ->
-  'TODO'.
+bail_out(Message) ->
+  TestRun = get_test_run_or_parent(),
+  estap_server:bail_out(TestRun, Message),
+  exit('BAIL_OUT').
 
 %% @doc Set the "no plan" plan for sub-tests.
 %%   Calling this function may be safely skipped.

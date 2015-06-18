@@ -40,8 +40,13 @@ run(Plan, Tests) ->
     no_plan   -> estap_server:no_plan();
     {plan, C} -> estap_server:plan(C)
   end,
-  run_tests(TestRun, Tests),
-  estap_server:done(TestRun).
+  try
+    run_tests(TestRun, Tests),
+    estap_server:done(TestRun)
+  catch
+    throw:'BAIL_OUT' ->
+      ok
+  end.
 
 %% @doc Run tests, one by one, reporting their results to tracking process.
 %%
@@ -84,6 +89,8 @@ test(TestRun, {Mod, Func} = _TestFunSpec) ->
     {result, ResultRef, TestResult} ->
       erlang:demonitor(MonRef, [flush]),
       TestResult;
+    {'DOWN', MonRef, process, Pid, 'BAIL_OUT'} ->
+      throw('BAIL_OUT');
     {'DOWN', MonRef, process, Pid, Reason} ->
       {died, Reason}
   end.

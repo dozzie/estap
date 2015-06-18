@@ -9,7 +9,7 @@
 -behaviour(gen_server).
 
 %% public interface
--export([no_plan/0, plan/1, subplan/2, done/1]).
+-export([no_plan/0, plan/1, subplan/2, done/1, bail_out/2]).
 -export([get_status/1]).
 -export([info/2, warning/2]).
 -export([running/2, report_result/2, report_result_todo/3, report_skipped/2]).
@@ -155,6 +155,14 @@ report_result_todo(TestRunId, Why, {died, Reason} = _TestResult) ->
 report_skipped(TestRunId, Why) ->
   gen_server:call(TestRunId, {skipped, Why}).
 
+%% @doc Abort the test script because of fatal error.
+
+-spec bail_out(test_run_id(), string()) ->
+  ok.
+
+bail_out(TestRunId, Reason) ->
+  gen_server:call(TestRunId, {bail_out, Reason}).
+
 %% }}}
 %%----------------------------------------------------------
 %% printing messages {{{
@@ -240,6 +248,10 @@ handle_call(done = _Request, _From,
     C when is_integer(C) ->
       print("# ran ~B of ~B tests", [LastTestNo, C], State)
   end,
+  {stop, normal, ok, State};
+
+handle_call({bail_out, Reason} = _Request, _From, State) ->
+  print("Bail out! ~s", [Reason], State),
   {stop, normal, ok, State};
 
 handle_call({next, Desc} = _Request, _From,
