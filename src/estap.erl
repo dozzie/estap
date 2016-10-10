@@ -58,9 +58,7 @@
   Value :: value().
 
 ok(Value, Description) ->
-  TestRun = get_test_run(),
-  estap_server:running(TestRun, Description),
-  estap_server:report_result(TestRun, estap_test:success_or_failure(Value)),
+  report(estap_test:success_or_failure(Value), Description),
   Value.
 
 %% @doc Mark the test as a success unconditionally.
@@ -69,7 +67,8 @@ ok(Value, Description) ->
   true.
 
 pass(Description) ->
-  ok(true, Description).
+  report({success, explicit}, Description),
+  true.
 
 %% @doc Mark the test as a failure unconditionally.
 
@@ -77,7 +76,8 @@ pass(Description) ->
   false.
 
 fail(Description) ->
-  ok(false, Description).
+  report({failure, explicit}, Description),
+  false.
 
 %% @doc Check if `Value' is the same as `Expected'.
 
@@ -86,8 +86,8 @@ fail(Description) ->
 
 is(Value, Expected, Description) ->
   case Value of
-    Expected -> pass(Description);
-    _ -> fail(Description)
+    Expected -> report({success, Value}, Description);
+    _        -> report({failure, Value}, Description)
   end,
   Value.
 
@@ -98,8 +98,8 @@ is(Value, Expected, Description) ->
 
 isnt(Value, Expected, Description) ->
   case Value of
-    Expected -> fail(Description);
-    _ -> pass(Description)
+    Expected -> report({failure, Value}, Description);
+    _        -> report({success, Value}, Description)
   end,
   Value.
 
@@ -135,7 +135,11 @@ cmp(Value, Cmp, Expected, Description) ->
     '=='  -> Value ==  Expected;
     '=:=' -> Value =:= Expected
   end,
-  ok(CmpResult, Description),
+  % FIXME: better reporting for failures
+  case CmpResult of
+    true  -> report({success, Value}, Description);
+    false -> report({failure, Value}, Description)
+  end,
   Value.
 
 %% @doc Check if `Value' matches a regexp.
@@ -149,8 +153,8 @@ like(Value, Expected, Description) ->
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
   case re:run(Value, Expected) of
-    {match, _Capture} -> estap_server:report_result(TestRun, {success, true});
-    nomatch           -> estap_server:report_result(TestRun, {failure, false})
+    {match, _Capture} -> estap_server:report_result(TestRun, {success, Value});
+    nomatch           -> estap_server:report_result(TestRun, {failure, Value})
   end,
   Value.
 
@@ -165,8 +169,8 @@ unlike(Value, Expected, Description) ->
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
   case re:run(Value, Expected) of
-    {match, _Capture} -> estap_server:report_result(TestRun, {failure, false});
-    nomatch           -> estap_server:report_result(TestRun, {success, true})
+    {match, _Capture} -> estap_server:report_result(TestRun, {failure, Value});
+    nomatch           -> estap_server:report_result(TestRun, {success, Value})
   end,
   Value.
 
@@ -183,10 +187,10 @@ matches(Value, MatchSpec, Description) ->
   estap_server:running(TestRun, Description),
   try
     MatchSpec(Value),
-    estap_server:report_result(TestRun, {success, true})
+    estap_server:report_result(TestRun, {success, Value})
   catch
     error:function_clause ->
-      estap_server:report_result(TestRun, {failure, false})
+      estap_server:report_result(TestRun, {failure, Value})
   end,
   Value.
 
@@ -390,6 +394,18 @@ get_test_run_or_parent() ->
     TestRun when is_pid(TestRun) ->
       TestRun
   end.
+
+%% @doc Send a test report to {@link estap_server}.
+
+-spec report({success | failure | dubious, Value :: value()}, description()) ->
+  ok.
+
+report({T,_V} = Report, Description)
+when T == success; T == failure; T == dubious ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  estap_server:report_result(TestRun, Report),
+  ok.
 
 %%%---------------------------------------------------------------------------
 %%% vim:ft=erlang:foldmethod=marker
