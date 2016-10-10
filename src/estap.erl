@@ -21,7 +21,9 @@
 -module(estap).
 
 %% public interface
--export([ok/2, pass/1, fail/1, is/3, isnt/3, eq/3, ne/3, cmp/4]).
+-export([ok/2, not_ok/2, error/2]).
+-export([pass/1, fail/1]).
+-export([is/3, isnt/3, eq/3, ne/3, cmp/4]).
 -export([like/3, unlike/3, matches/3]).
 -export([bail_out/1, no_plan/0, plan/1, all_ok/0]).
 -export([diag/1, diag/2, info/1, info/2, explain/1]).
@@ -53,12 +55,49 @@
 %%%---------------------------------------------------------------------------
 
 %% @doc Check if `Value' is any of the recognized truth values.
+%%
+%% @see not_ok/2
+%% @see error/2
 
 -spec ok(value(), description()) ->
   Value :: value().
 
 ok(Value, Description) ->
   report(estap_test:success_or_failure(Value), Description),
+  Value.
+
+%% @doc Check if `Value' is none of the recognized truth values.
+%%
+%%   Dubious `Value' is also a success here.
+%%
+%% @see ok/2
+%% @see error/2
+
+-spec not_ok(value(), description()) ->
+  Value :: value().
+
+not_ok(Value, Description) ->
+  case estap_test:success_or_failure(Value) of
+    {success, _} -> report({failure, Value}, Description);
+    {failure, _} -> report({success, Value}, Description);
+    {dubious, _} -> report({success, Value}, Description)
+  end,
+  Value.
+
+%% @doc Check if `Value' is any of the recognized falsity values.
+%%
+%% @see ok/2
+%% @see not_ok/2
+
+-spec error(value(), description()) ->
+  Value :: value().
+
+error(Value, Description) ->
+  case estap_test:success_or_failure(Value) of
+    {success, _} -> report({failure, Value}, Description);
+    {failure, _} -> report({success, Value}, Description);
+    {dubious, _} -> report({dubious, Value}, Description)
+  end,
   Value.
 
 %% @doc Mark the test as a success unconditionally.
