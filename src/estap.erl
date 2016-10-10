@@ -277,13 +277,22 @@ plan(TestCount) when is_integer(TestCount) ->
 %%   indicate that the test sequence passed or failed.
 
 -spec all_ok() ->
-  true | false.
+  ok | {error, term()}.
 
 all_ok() ->
   TestRun = get_test_run(),
   {Planned, Total, Failed, _TODO} = estap_server:get_status(TestRun),
   estap_server:done(TestRun), % this ends estap_server, so it goes last
-  (Failed == 0) and ((Planned == undefined) or (Planned == Total)).
+  case Failed of
+    0 when Planned == undefined ->
+      ok;
+    0 when Planned == Total ->
+      ok;
+    0 when Planned /= Total ->
+      {error, {bad_plan, [{plan, Planned}, {run, Total}]}};
+    _ ->
+      {error, {failures, [{failed, Failed}, {plan, Planned}, {run, Total}]}}
+  end.
 
 %%%---------------------------------------------------------------------------
 
