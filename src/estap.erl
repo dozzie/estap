@@ -21,7 +21,9 @@
 -module(estap).
 
 %% public interface
--export([ok/2, pass/1, fail/1, is/3, isnt/3, eq/3, ne/3, cmp/4]).
+-export([ok/2, not_ok/2, error/2]).
+-export([pass/1, fail/1]).
+-export([is/3, isnt/3, eq/3, ne/3, cmp/4]).
 -export([like/3, unlike/3, matches/3]).
 -export([bail_out/1, no_plan/0, plan/1, all_ok/0]).
 -export([diag/1, diag/2, info/1, info/2, explain/1]).
@@ -53,14 +55,49 @@
 %%%---------------------------------------------------------------------------
 
 %% @doc Check if `Value' is any of the recognized truth values.
+%%
+%% @see not_ok/2
+%% @see error/2
 
 -spec ok(value(), description()) ->
   Value :: value().
 
 ok(Value, Description) ->
-  TestRun = get_test_run(),
-  estap_server:running(TestRun, Description),
-  estap_server:report_result(TestRun, estap_test:success_or_failure(Value)),
+  report(estap_test:success_or_failure(Value), Description),
+  Value.
+
+%% @doc Check if `Value' is none of the recognized truth values.
+%%
+%%   Dubious `Value' is also a success here.
+%%
+%% @see ok/2
+%% @see error/2
+
+-spec not_ok(value(), description()) ->
+  Value :: value().
+
+not_ok(Value, Description) ->
+  case estap_test:success_or_failure(Value) of
+    {success, _} -> report({failure, Value}, Description);
+    {failure, _} -> report({success, Value}, Description);
+    {dubious, _} -> report({success, Value}, Description)
+  end,
+  Value.
+
+%% @doc Check if `Value' is any of the recognized falsity values.
+%%
+%% @see ok/2
+%% @see not_ok/2
+
+-spec error(value(), description()) ->
+  Value :: value().
+
+error(Value, Description) ->
+  case estap_test:success_or_failure(Value) of
+    {success, _} -> report({failure, Value}, Description);
+    {failure, _} -> report({success, Value}, Description);
+    {dubious, _} -> report({dubious, Value}, Description)
+  end,
   Value.
 
 %% @doc Mark the test as a success unconditionally.
@@ -69,7 +106,8 @@ ok(Value, Description) ->
   true.
 
 pass(Description) ->
-  ok(true, Description).
+  report({success, explicit}, Description),
+  true.
 
 %% @doc Mark the test as a failure unconditionally.
 
@@ -77,7 +115,8 @@ pass(Description) ->
   false.
 
 fail(Description) ->
-  ok(false, Description).
+  report({failure, explicit}, Description),
+  false.
 
 %% @doc Check if `Value' is the same as `Expected'.
 
@@ -86,8 +125,8 @@ fail(Description) ->
 
 is(Value, Expected, Description) ->
   case Value of
-    Expected -> pass(Description);
-    _ -> fail(Description)
+    Expected -> report({success, Value}, Description);
+    _        -> report({failure, Value}, Description)
   end,
   Value.
 
@@ -98,8 +137,8 @@ is(Value, Expected, Description) ->
 
 isnt(Value, Expected, Description) ->
   case Value of
-    Expected -> fail(Description);
-    _ -> pass(Description)
+    Expected -> report({failure, Value}, Description);
+    _        -> report({success, Value}, Description)
   end,
   Value.
 
@@ -135,7 +174,11 @@ cmp(Value, Cmp, Expected, Description) ->
     '=='  -> Value ==  Expected;
     '=:=' -> Value =:= Expected
   end,
-  ok(CmpResult, Description),
+  % FIXME: better reporting for failures
+  case CmpResult of
+    true  -> report({success, Value}, Description);
+    false -> report({failure, Value}, Description)
+  end,
   Value.
 
 %% @doc Check if `Value' matches a regexp.
@@ -149,8 +192,8 @@ like(Value, Expected, Description) ->
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
   case re:run(Value, Expected) of
-    {match, _Capture} -> estap_server:report_result(TestRun, {success, true});
-    nomatch           -> estap_server:report_result(TestRun, {failure, false})
+    {match, _Capture} -> estap_server:report_result(TestRun, {success, Value});
+    nomatch           -> estap_server:report_result(TestRun, {failure, Value})
   end,
   Value.
 
@@ -165,8 +208,8 @@ unlike(Value, Expected, Description) ->
   TestRun = get_test_run(),
   estap_server:running(TestRun, Description),
   case re:run(Value, Expected) of
-    {match, _Capture} -> estap_server:report_result(TestRun, {failure, false});
-    nomatch           -> estap_server:report_result(TestRun, {success, true})
+    {match, _Capture} -> estap_server:report_result(TestRun, {failure, Value});
+    nomatch           -> estap_server:report_result(TestRun, {success, Value})
   end,
   Value.
 
@@ -183,10 +226,10 @@ matches(Value, MatchSpec, Description) ->
   estap_server:running(TestRun, Description),
   try
     MatchSpec(Value),
-    estap_server:report_result(TestRun, {success, true})
+    estap_server:report_result(TestRun, {success, Value})
   catch
     error:function_clause ->
-      estap_server:report_result(TestRun, {failure, false})
+      estap_server:report_result(TestRun, {failure, Value})
   end,
   Value.
 
@@ -234,13 +277,22 @@ plan(TestCount) when is_integer(TestCount) ->
 %%   indicate that the test sequence passed or failed.
 
 -spec all_ok() ->
-  true | false.
+  ok | {error, term()}.
 
 all_ok() ->
   TestRun = get_test_run(),
   {Planned, Total, Failed, _TODO} = estap_server:get_status(TestRun),
   estap_server:done(TestRun), % this ends estap_server, so it goes last
-  (Failed == 0) and ((Planned == undefined) or (Planned == Total)).
+  case Failed of
+    0 when Planned == undefined ->
+      ok;
+    0 when Planned == Total ->
+      ok;
+    0 when Planned /= Total ->
+      {error, {bad_plan, [{plan, Planned}, {run, Total}]}};
+    _ ->
+      {error, {failures, [{failed, Failed}, {plan, Planned}, {run, Total}]}}
+  end.
 
 %%%---------------------------------------------------------------------------
 
@@ -390,6 +442,18 @@ get_test_run_or_parent() ->
     TestRun when is_pid(TestRun) ->
       TestRun
   end.
+
+%% @doc Send a test report to {@link estap_server}.
+
+-spec report({success | failure | dubious, Value :: value()}, description()) ->
+  ok.
+
+report({T,_V} = Report, Description)
+when T == success; T == failure; T == dubious ->
+  TestRun = get_test_run(),
+  estap_server:running(TestRun, Description),
+  estap_server:report_result(TestRun, Report),
+  ok.
 
 %%%---------------------------------------------------------------------------
 %%% vim:ft=erlang:foldmethod=marker
