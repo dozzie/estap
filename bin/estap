@@ -8,12 +8,15 @@ main(["--help"]) ->
   io:fwrite("Usage: ~s filename~n", [escript:script_name()]);
 
 main([File]) ->
-  {ok, {_Module, Forms}} = estap_file:read_file(File, []),
-  {ok, {Plan, Tests}} = estap_file:load_code(Forms),
-  case find_ebin(File) of
-    {ok, Path} -> code:add_patha(Path);
-    nothing -> ok
+  case find_project_root(File) of
+    {ok, Path} ->
+      IncludeDirs = [filename:join(Path, src)],
+      code:add_patha(filename:join(Path, ebin));
+    nothing ->
+      IncludeDirs = []
   end,
+  {ok, {_Module, Forms}} = estap_file:read_file(File, IncludeDirs),
+  {ok, {Plan, Tests}} = estap_file:load_code(Forms),
   estap_test:run(Plan, Tests),
   ok.
 
@@ -21,16 +24,15 @@ main([File]) ->
 
 -include_lib("kernel/include/file.hrl").
 
-find_ebin(Path) ->
-  EBin = filename:join(Path, ebin),
-  case file:read_file_info(EBin) of
+find_project_root(Path) ->
+  case file:read_file_info(filename:join(Path, ebin)) of
     {ok, #file_info{type = directory}} ->
-      {ok, EBin};
+      {ok, Path};
     _ ->
       case Path of
         "." -> nothing; % don't check parent
         "/" -> nothing; % no parent
-        _ -> find_ebin(filename:dirname(Path))
+        _ -> find_project_root(filename:dirname(Path))
       end
   end.
 
