@@ -1,3 +1,12 @@
+erlang-estap (0.3.0-1) stable; urgency=low
+
+  * $PROJECT_ROOT/src added to include path
+  * Two more test functions
+  * Error report from estap:all_ok() more descriptive
+  * Fixed diagnostic messages for subtests
+
+ -- Stanislaw Klekot <dozzie@jarowit.net>  Sat, 29 Oct 2016 00:21:20 +0200
+
 erlang-estap (0.2.0-1) stable; urgency=low
 
   * Top-level test diagnostic messages
